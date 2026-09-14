@@ -2,6 +2,7 @@ package pedidos360.bff.controllers;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -68,6 +69,26 @@ public class OrderController {
             return ResponseEntity.status(e.getStatusCode())
                     .headers(e.getResponseHeaders())
                     .body(e.getResponseBodyAsString());
+        }
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_Admin')")
+    @PutMapping("/{id}/accept")
+    public ResponseEntity<?> accept(@PathVariable String id) {
+        try {
+            return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/accept", org.springframework.http.HttpMethod.PUT, null, String.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+        }
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_Admin')")
+    @PutMapping("/{id}/ship")
+    public ResponseEntity<?> ship(@PathVariable String id) {
+        try {
+            return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/ship", org.springframework.http.HttpMethod.PUT, null, String.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
         }
     }
 }
