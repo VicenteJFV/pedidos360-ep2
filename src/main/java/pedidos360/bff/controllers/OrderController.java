@@ -1,5 +1,6 @@
 package pedidos360.bff.controllers;
 
+import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,9 +44,8 @@ public class OrderController {
         try {
             return restTemplate.getForEntity(url, String.class);
         } catch (HttpStatusCodeException e) {
-            // 2. PROPAGACIÓN DE ERRORES: Devolver código y mensaje intactos
             return ResponseEntity.status(e.getStatusCode())
-                    .headers(e.getResponseHeaders())
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(e.getResponseBodyAsString());
         }
     }
@@ -67,7 +67,7 @@ public class OrderController {
             return restTemplate.postForEntity(ordersBaseUrl + "/api/orders", payload, String.class);
         } catch (HttpStatusCodeException e) {
             return ResponseEntity.status(e.getStatusCode())
-                    .headers(e.getResponseHeaders())
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(e.getResponseBodyAsString());
         }
     }
@@ -78,7 +78,7 @@ public class OrderController {
         try {
             return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/accept", org.springframework.http.HttpMethod.PUT, null, String.class);
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+            return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(e.getResponseBodyAsString());
         }
     }
 
@@ -88,7 +88,7 @@ public class OrderController {
         try {
             return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/ship", org.springframework.http.HttpMethod.PUT, null, String.class);
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+            return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(e.getResponseBodyAsString());
         }
     }
 
@@ -98,7 +98,7 @@ public class OrderController {
         try {
             return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/prepare", org.springframework.http.HttpMethod.PUT, null, String.class);
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+            return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(e.getResponseBodyAsString());
         }
     }
 
@@ -108,12 +108,7 @@ public class OrderController {
         try {
             return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/deliver", org.springframework.http.HttpMethod.PUT, null, String.class);
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+            return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(e.getResponseBodyAsString());
         }
     }
-
-
-
-
-
 }
