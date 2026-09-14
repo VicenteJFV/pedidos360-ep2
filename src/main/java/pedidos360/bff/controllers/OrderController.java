@@ -91,4 +91,29 @@ public class OrderController {
             return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
         }
     }
+
+    @PreAuthorize("hasAuthority('ROLE_Admin')")
+    @PutMapping("/{id}/prepare")
+    public ResponseEntity<?> prepare(@PathVariable String id) {
+        try {
+            return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/prepare", org.springframework.http.HttpMethod.PUT, null, String.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+        }
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_Admin')")
+    @PutMapping("/{id}/deliver")
+    public ResponseEntity<?> deliver(@PathVariable String id) {
+        try {
+            return restTemplate.exchange(ordersBaseUrl + "/api/orders/" + id + "/deliver", org.springframework.http.HttpMethod.PUT, null, String.class);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return ResponseEntity.status(e.getStatusCode()).headers(e.getResponseHeaders()).body(e.getResponseBodyAsString());
+        }
+    }
+
+
+
+
+
 }
