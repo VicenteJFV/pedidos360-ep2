@@ -1,14 +1,19 @@
-# Pedidos360 — AWS, API Gateway y Microservicios (EP1 DSY1107)
+# Pedidos360 — RabbitMQ, AWS y Microservicios (EP2 DSY1107)
 
-Mi parte de la evaluación: los dos microservicios de negocio, la persistencia en Oracle y toda la infraestructura AWS.
+Caso 0 — Pedidos360. Este repositorio es la **evolución de EP1 incorporando RabbitMQ**: conserva el dominio, los microservicios, la seguridad y la persistencia de la primera entrega, y les agrega la mensajería que el caso ya definía en el diseño.
 
 ```
-pedidos360/
-├── ms-pedidos360-orders/     Microservicio principal (8081) — pedidos y máquina de estados
-├── ms-pedidos360-catalog/    Microservicio de catálogo (8082) — productos y stock
-├── aws/                      Scripts de infraestructura y API Gateway
-└── pruebas/                  Verificación local, token de Entra ID y colección Postman
+pedidos360-ep2/
+├── ms-pedidos360-orders/       Microservicio principal (8081) — pedidos, estados y PRODUCTOR
+├── ms-pedidos360-catalog/      Microservicio de catálogo (8082) — productos y stock
+├── ms-pedidos360-notify/       Consumidor RabbitMQ (8083) — sin base de datos        [EP2]
+├── ms-pedidos360-rabbitadmin/  Administrador de RabbitMQ (8084) — REST + RabbitAdmin [EP2]
+├── rabbitmq-cluster/           Clúster de dos nodos con Docker Compose               [EP2]
+├── aws/                        Scripts de infraestructura y API Gateway
+└── pruebas/                    Verificación local y de EP2, token de Entra ID y Postman
 ```
+
+`ms-pedidos360-orders` sigue siendo el dueño del negocio y ahora además publica eventos; los otros dos microservicios son nuevos. **El flujo de EP1 no se modificó**: sigue siendo síncrono donde corresponde, y la mensajería se limita a lo que el caso define como asíncrono —notificaciones, tickets de cocina y generación de documentos.
 
 ## Contrato de integración
 
@@ -34,7 +39,162 @@ El API Gateway valida el JWT de Entra ID (`issuer` + `audience`), el BFF valida 
 
 La transición inválida devuelve `400` porque así lo exige la matriz de pruebas de la pauta (`PUT /api/orders/{id}/ship` con estado no apto). Semánticamente `409` sería más preciso —el recurso existe y la petición está bien formada, lo que falla es el estado— y así está documentado en `ManejadorGlobalErrores`.
 
-## Puesta en marcha
+---
+
+# EP2 — Mensajería con RabbitMQ
+
+## Topología del caso
+
+Los nombres son exactamente los que define la guía de EP2. No son decorativos: la evaluación se hace sobre ellos.
+
+| Cola principal | Propósito | DLQ | Binding direct | Binding topic |
+| :--- | :--- | :--- | :--- | :--- |
+| `q.cmd.email` | Envío de correos/push | `q.cmd.email.dlq` | `email.send` | `email.*` |
+| `q.cmd.kitchen` | Ticket/impresión cocina | `q.cmd.kitchen.dlq` | `kitchen.ticket` | `kitchen.#` |
+| `q.cmd.invoice` | Generación de PDF/boleta/factura | `q.cmd.invoice.dlq` | `invoice.gen` | `invoice.*` |
+
+Exchanges comunes: **`cmd.direct`** (direct, coincidencia exacta), **`cmd.topic`** (topic, patrones `*` y `#`) y **`cmd.dead.dlx`** (direct, recibe los mensajes rechazados).
+
+Las tres colas y las tres DLQ se declaran en una sola clase por microservicio, [`RabbitMQConfig`](ms-pedidos360-orders/src/main/java/cl/duoc/pedidos360/orders/messaging/RabbitMQConfig.java), y **ninguna cadena literal aparece en la lógica de negocio**. Está duplicada a propósito en `orders` y en `notify`: cada microservicio se despliega por separado y debe poder arrancar solo, sin esperar a que el otro haya creado las colas. El precio es que las dos declaraciones tienen que coincidir exactamente en durabilidad y argumentos, o RabbitMQ rechaza la segunda con `PRECONDITION_FAILED - inequivalent arg`.
+
+### Qué publica cada acción del negocio
+
+La publicación está enganchada al flujo real y va **siempre al final del método**, cuando la transición y el descuento de stock ya tuvieron éxito. Si el catálogo rechaza por falta de stock, la excepción propaga antes y no se emite ningún mensaje: nunca se le avisa a un cliente de un pedido que en realidad no se aceptó.
+
+| Acción | Exchange | Routing key | Cola | Por qué |
+| :--- | :--- | :--- | :--- | :--- |
+| `PUT /accept` | `cmd.direct` | `email.send` | `q.cmd.email` | avisar al cliente |
+| `PUT /accept` | `cmd.topic` | `kitchen.ticket.new` | `q.cmd.kitchen` | encolar el ticket en cocina |
+| `PUT /ship` | `cmd.direct` | `email.send` | `q.cmd.email` | avisar que el pedido salió |
+| `PUT /deliver` | `cmd.direct` | `invoice.gen` | `q.cmd.invoice` | pedir el documento de venta |
+
+Aceptar genera **dos** mensajes porque son dos trabajos distintos, de dueños distintos. Comparten `correlationId` —el código del pedido— para poder seguirlos juntos en los logs. `kitchen.ticket.new` se publica por `cmd.topic` a propósito: demuestra el segundo tipo de exchange con una clave que calza por patrón (`kitchen.#`) y no por coincidencia exacta.
+
+Preparar no publica nada: el ticket ya salió al aceptar, y repetirlo sería duplicar el trabajo.
+
+### ACK, NACK, reintento y DLQ
+
+`ms-pedidos360-notify` tiene **un consumidor por dominio funcional** y confirmación manual: el mensaje solo se da por procesado cuando el código llama a `basicAck`. La decisión vive en un solo lugar, [`EjecutorDeConsumo`](ms-pedidos360-notify/src/main/java/cl/duoc/pedidos360/notify/consumer/EjecutorDeConsumo.java), porque un ACK de más o de menos es un error silencioso y caro.
+
+| Situación | Acción | Evidencia en el log |
+| :--- | :--- | :--- |
+| Procesamiento correcto | `basicAck(deliveryTag, false)` | `ACK MANUAL ENVIADO` |
+| Error **permanente** (dirección inexistente, mensaje incompleto) | `basicNack(..., false, false)` de inmediato | `ERROR NO RECUPERABLE` + `NACK SIN REQUEUE ENVIADO` |
+| Error **transitorio** (proveedor caído) | 3 reintentos a 1 s, 2 s y 4 s | `ERROR RECUPERABLE ... intento 2 de 4 ... reintento en 2000 ms` |
+| Reintentos agotados | `basicNack` → DLQ | `REINTENTOS AGOTADOS` + `NACK SIN REQUEUE ENVIADO` |
+| Excepción inesperada | `basicNack` + traza completa | `ERROR INESPERADO` |
+
+Distinguir las dos clases de falla no es adorno: reintentar cuatro veces un mensaje que nunca va a poder procesarse solo gasta el tiempo del consumidor y, con `prefetch=1`, retrasa a los mensajes que sí se pueden procesar.
+
+`requeue=false` es lo que evita el ciclo infinito. Con `true`, el mensaje volvería a la misma cola, se volvería a entregar, fallaría por la misma razón y giraría para siempre.
+
+> **Por qué el reintento es propio y no `spring.rabbitmq.listener.simple.retry.*`**
+>
+> El reintento del contenedor **es incompatible con la confirmación manual**. Al agotar los reintentos, `RejectAndDontRequeueRecoverer` lanza `AmqpRejectAndDontRequeueException`, pero el manejador de errores la envuelve en `ListenerExecutionFailedException`, y en modo manual el contenedor solo rechaza por su cuenta cuando la excepción que recibe **es** de rechazo, no cuando viene envuelta. El mensaje entonces no se confirma ni se rechaza: queda colgado en `Unacked`, y con `prefetch=1` detiene la cola completa detrás de ese único mensaje.
+>
+> No es una suposición. Se probó contra el clúster con la configuración de las guías: la cola quedó en `Unacked=1` y `Ready=1` de forma indefinida, con la DLQ vacía. Por eso los reintentos se hacen en `EjecutorDeConsumo`, donde el mismo código que reintenta es el que después rechaza, con los mismos valores de las guías (`notify.reintentos.*` en `application.properties`).
+
+### El error controlado se dispara con un dato, no con código
+
+La prueba de error tiene que poder ejecutarse en vivo durante la presentación sin tocar código, sin reiniciar servicios y sin apagar contenedores. El disparador es el **correo del cliente del pedido**:
+
+| Correo del pedido | Qué provoca |
+| :--- | :--- |
+| cualquiera | procesamiento normal → ACK |
+| `error-permanente@pedidos360.cl` | falla definitiva → NACK inmediato → DLQ |
+| `error-transitorio@pedidos360.cl` | falla recuperable → 4 intentos → DLQ |
+
+Se crea el pedido con ese correo, se acepta, y el consumidor falla **solo para ese mensaje** mientras los demás siguen pasando. Un pedido con `error-permanente@` deja un mensaje en cada una de las tres DLQ a lo largo del ciclo completo.
+
+### Retención y limpieza
+
+| Argumento | Colas funcionales | DLQ | Por qué |
+| :--- | :--- | :--- | :--- |
+| `x-message-ttl` | 10 min | 24 h | Una notificación que no se envió en 10 minutos ya perdió sentido; un mensaje muerto tiene que sobrevivir lo suficiente para que alguien lo revise |
+| `x-max-length` | 10 000 | 5 000 | Sin tope, un consumidor caído durante horas hace crecer la cola hasta agotar la memoria del broker |
+| `x-overflow` | `reject-publish-dlx` | — | Al superar el tope, el mensaje va al DLX en vez de perderse en silencio |
+| `x-dead-letter-exchange` | `cmd.dead.dlx` | **ninguno** | Las DLQ no reencolan: un mensaje que ya falló no debe poder fallar otra vez, o se formaría un ciclo |
+
+## Puesta en marcha de EP2 (local)
+
+**1. Clúster de dos nodos** (necesita Docker Desktop corriendo):
+
+```powershell
+cd C:\dev\pedidos360-ep2\rabbitmq-cluster ; .\levantar-cluster.ps1
+```
+
+El script es idempotente: arranca los contenedores, espera a que ambos nodos respondan, une `rabbitmq-2` al clúster solo si hace falta e imprime el `cluster_status`. Management queda en **http://localhost:15672** (nodo 1) y **http://localhost:15673** (nodo 2), `guest`/`guest`.
+
+> Si tienes el contenedor de las actividades anteriores (`rabbitmq-resiliencia`) ocupando el puerto 5672, el script lo detiene y te dice cómo reactivarlo.
+
+**2. Compilar y verificar todo de una vez:**
+
+```powershell
+cd C:\dev\pedidos360-ep2\pruebas ; .\verificar-ep2.ps1 -Compilar
+```
+
+Arranca los cuatro microservicios, ejecuta las pruebas obligatorias de la guía —flujo normal con ACK, error controlado con NACK y DLQ, administración de recursos, validación con HTTP 400, métricas y retención— y apaga todo al terminar. Los logs quedan en `logs/`; **el de `notify` es el que conviene mostrar en la presentación**, porque ahí aparecen los ACK, los reintentos y los NACK con su `eventId`.
+
+**3. Para la demostración en vivo**, con el clúster arriba, en cuatro terminales:
+
+```powershell
+java -jar ms-pedidos360-catalog/target/ms-pedidos360-catalog.jar
+```
+```powershell
+java -jar ms-pedidos360-orders/target/ms-pedidos360-orders.jar
+```
+```powershell
+java -jar ms-pedidos360-notify/target/ms-pedidos360-notify.jar
+```
+```powershell
+java -jar ms-pedidos360-rabbitadmin/target/ms-pedidos360-rabbitadmin.jar
+```
+
+El catálogo primero, porque pedidos lo consulta al crear un pedido. `notify` conviene dejarlo a la vista: su consola es la evidencia.
+
+**4. Postman**: importar [`pruebas/Pedidos360-EP2.postman_collection.json`](pruebas/Pedidos360-EP2.postman_collection.json) y su environment, y correr con **Collection Runner, la colección completa y `Delay = 1000 ms`**. Dos comprobaciones repiten su petición hasta que el consumidor termina, y eso usa `setNextRequest`, que solo funciona dentro del Runner.
+
+## API del microservicio administrador
+
+`RabbitMQController` valida y traduce a HTTP; `RabbitResourceManager` encapsula `RabbitAdmin` y es el único que habla con el broker.
+
+| Operación | Endpoint | Validación |
+| :--- | :--- | :--- |
+| Crear cola | `POST /api/rabbitmq/queues?queueName=` | `queueName` no vacío → `201` |
+| Consultar cola | `GET /api/rabbitmq/queues/{queueName}` | `404` si no existe |
+| Eliminar cola | `DELETE /api/rabbitmq/queues/{queueName}` | `200`, idempotente |
+| Purgar cola | `POST /api/rabbitmq/queues/{queueName}/purge` | informa cuántos descartó |
+| Crear exchange | `POST /api/rabbitmq/exchanges?exchangeName=&type=` | tipo en `direct, topic, fanout, headers` → `201` |
+| Eliminar exchange | `DELETE /api/rabbitmq/exchanges/{exchangeName}` | `200`, idempotente |
+| Crear binding | `POST /api/rabbitmq/bindings?queueName=&exchangeName=&routingKey=` | los tres obligatorios → `201` |
+| Eliminar binding | `DELETE /api/rabbitmq/bindings?queueName=&exchangeName=&routingKey=` | los tres obligatorios |
+| Métricas | `GET /api/rabbitmq/metricas` | — |
+
+Un parámetro ausente o en blanco devuelve `400` **nombrando el parámetro**, y lo hace antes de abrir una conexión. Importa que sea antes: declarar una cola con nombre vacío no es un error en RabbitMQ, es una cola con nombre generado por el servidor, y eso no es lo que nadie quiso pedir.
+
+### Métricas y qué decisión permite tomar cada una
+
+| Métrica | Cómo interpretarla |
+| :--- | :--- |
+| `colasActivas` / `colasEsperadas` | Comprueba que la topología está desplegada. Si no son 6 de 6, falta arrancar `orders` o `notify` |
+| `mensajesPendientes` | Un crecimiento sostenido indica que el consumidor no da abasto, o que está caído |
+| `consumidores` | Verifica que los listeners están activos. `0` con mensajes en cola es una alarma |
+| `mensajesEnDlq` | Cada uno es un mensaje que no se pudo procesar y que alguien tiene que revisar |
+| `tasaDlq` | Una tasa que sube delata un problema recurrente, no un incidente aislado |
+
+Las métricas se obtienen preguntando por cada cola conocida y no listando el broker completo, porque `RabbitAdmin` trabaja sobre AMQP y **AMQP no tiene una operación para listar colas**: eso solo lo ofrece la API de Management, que exigiría credenciales HTTP aparte. Preguntar por nombre alcanza, porque las colas del caso son seis y están definidas.
+
+### Dos detalles que se decidieron mirando el broker
+
+**Los bindings se construyen con `new Binding(...)`** y no con `BindingBuilder.bind(cola).to(new DirectExchange(nombre))`, como aparece en los ejemplos. El tipo del exchange local **nunca viaja al broker**: un binding lleva nombre de exchange, destino y routing key, nada más. Escribir `DirectExchange` para enlazar una cola a `cmd.topic` funciona igual, pero deja el código afirmando algo que no es cierto.
+
+**El borrado no informa si el recurso existía.** `RabbitAdmin.deleteQueue` devuelve un `boolean`, pero ese `boolean` no significa eso: se comprobó contra el clúster que devuelve `true` también cuando la cola nunca estuvo. Para saber si una cola existe, se la consulta —y el `GET` responde `404` después de eliminarla, que es la evidencia real.
+
+El microservicio administrador **no declara topología al arrancar** (`spring.rabbitmq.dynamic=false` y `setAutoStartup(false)`). Si lo hiciera, bastaría reiniciarlo para resucitar una cola que alguien acaba de eliminar a propósito, y las pruebas de eliminación dejarían de significar algo.
+
+---
+
+## Puesta en marcha (AWS, EP1)
 
 El entorno vive en AWS Academy Learner Lab, cuya sesión caduca cada ~4 horas: la EC2 se detiene sola y la base hay que arrancarla a mano. Estos cinco pasos dejan todo operativo. **Cuentan unos 10 minutos**, casi todos esperando a Oracle.
 
@@ -108,18 +268,39 @@ Al conservarse la IP elástica, **el API Gateway nunca hay que reconfigurarlo** 
 
 ## Estado de verificación
 
+### EP2 — mensajería
+
 | Qué | Resultado |
 | :--- | :--- |
-| `mvn clean package` en ambos microservicios | **BUILD SUCCESS** |
+| `mvn clean package` en los cuatro microservicios | **BUILD SUCCESS** |
+| Tests de pedidos, con las 8 nuevas de mensajería | **52/52 pasando** |
+| Tests de `ms-pedidos360-notify` (ACK/NACK, backoff, disparador) | **16/16 pasando** |
+| Tests de `ms-pedidos360-rabbitadmin` — capa HTTP | **14/14 pasando** |
+| Tests de `ms-pedidos360-rabbitadmin` — integración contra el clúster real | **9/9 pasando** |
+| Clúster de dos nodos formado, ambos en *Disk Nodes* y *Running Nodes* | **OK** |
+| Flujo normal contra el clúster: ACK manual en las tres colas | **OK** |
+| Error permanente: NACK inmediato → DLQ | **OK** |
+| Error transitorio: 4 intentos a 1 s, 2 s y 4 s → DLQ | **OK** |
+| Un mensaje en cada una de las tres DLQ | **OK** |
+| TTL de 10 min dead-letterizando por sí solo al expirar | **OK — observado** |
+| JSON de la colección Postman de EP2 (38 peticiones) | **válido** |
+
+Las 9 pruebas de integración declaran y eliminan recursos reales en el broker, y **se saltan solas si el clúster no está levantado**: una prueba que falla porque falta la infraestructura no informa nada útil y vuelve inutilizable el build de cualquiera que no tenga Docker corriendo.
+
+La verificación de las tres rutas de ACK/NACK se hizo publicando mensajes directamente al broker por la API de Management y leyendo las profundidades de cola resultantes: `q.cmd.email.dlq = 2`, `q.cmd.kitchen.dlq = 1`, `q.cmd.invoice.dlq = 1`, con las tres colas principales drenadas y tres consumidores conectados.
+
+### EP1 — sigue vigente
+
+| Qué | Resultado |
+| :--- | :--- |
 | Tests de catálogo (`ProductoServiceTest`, `StockServiceTest`) | **13/13 pasando** |
-| Tests de pedidos (`EstadoPedidoTest`, `PedidoServiceTest`) | **44/44 pasando** |
 | Arranque real de Tomcat y pruebas HTTP extremo a extremo | **26/26 pasando** |
 | Matriz de seguridad contra AWS con tokens reales de Entra ID | **19/19 pasando** |
 | Persistencia en Oracle verificada tras reiniciar los servicios | **OK** |
-| Sintaxis de los 7 scripts PowerShell | **OK** |
-| JSON de la colección Postman | **válido** |
+| Sintaxis de los scripts PowerShell | **OK** |
+| JSON de la colección Postman de EP1 | **válido** |
 
-Los 57 tests de Maven verifican la máquina de estados, la atomicidad del descuento de stock, la consolidación de líneas, el congelado de precios y el mapeo JPA. Las 26 comprobaciones de [pruebas/verificar-local.ps1](pruebas/verificar-local.ps1) verifican lo que los tests no pueden: que Tomcat arranca, que la serialización JSON funciona, que la llamada pedidos → catálogo viaja por la red, y que los microservicios no son alcanzables fuera de loopback.
+Los tests de Maven verifican la máquina de estados, la atomicidad del descuento de stock, la consolidación de líneas, el congelado de precios y el mapeo JPA. Las 26 comprobaciones de [pruebas/verificar-local.ps1](pruebas/verificar-local.ps1) verifican lo que los tests no pueden: que Tomcat arranca, que la serialización JSON funciona, que la llamada pedidos → catálogo viaja por la red, y que los microservicios no son alcanzables fuera de loopback.
 
 Las 19 comprobaciones de [pruebas/verificar-matriz.ps1](pruebas/verificar-matriz.ps1) recorren la cadena completa —Angular → API Gateway → BFF → microservicio → Oracle— con tokens reales obtenidos por Authorization Code + PKCE:
 

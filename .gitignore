@@ -73,3 +73,5 @@ logs/
 postman/
 *.environment.yaml
 pruebas/Pedidos360 - Matriz de seguridad EP1/
+
+pruebas/Pedidos360 EP2 - RabbitMQ/

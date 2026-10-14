@@ -1,0 +1,1207 @@
+{
+  "info": {
+    "_postman_id": "b2f4c6a8-11d3-4e7a-8f20-ep2pedidos360",
+    "name": "Pedidos360 EP2 - RabbitMQ",
+    "description": "Pruebas obligatorias de la seccion 12 de la guia de EP2.\n\nAntes de correrla:\n\n1. Levantar el cluster:  cd rabbitmq-cluster ; .\\levantar-cluster.ps1\n2. Arrancar los cuatro microservicios (catalog 8082, orders 8081, notify 8083, rabbitadmin 8084).\n3. Seleccionar el environment \"Pedidos360 EP2 - local\".\n\nCORRER CON EL COLLECTION RUNNER, la coleccion completa y con Delay = 1000 ms.\n\nLas dos razones: las carpetas se apoyan en variables que fija la anterior, y dos comprobaciones repiten su peticion hasta que el consumidor termina (el ciclo de reintentos tarda unos 7 segundos). Esa repeticion usa setNextRequest, que solo funciona dentro del Runner.\n\nLas DLQ se purgan al principio para que los conteos del flujo con error signifiquen algo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Preparacion",
+      "item": [
+        {
+          "name": "Purgar las tres DLQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Se purgan las tres DLQ en una sola peticion por cola, en cadena,",
+                  "// para partir de cero. Purgar es, ademas, una de las operaciones",
+                  "// administrativas que la guia pide demostrar.",
+                  "pm.test('Purgar q.cmd.email.dlq responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq/purge",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq", "purge"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purgar q.cmd.kitchen.dlq",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.kitchen.dlq/purge",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.kitchen.dlq", "purge"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purgar q.cmd.invoice.dlq",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.invoice.dlq/purge",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.invoice.dlq", "purge"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener un producto del catalogo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('El catalogo responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const productos = pm.response.json();",
+                  "pm.test('Hay productos con stock', () => pm.expect(productos.length).to.be.above(0));",
+                  "",
+                  "// Se elige uno con stock suficiente para las cuatro pruebas que crean pedido.",
+                  "const util = productos.find(p => p.activo && p.stock > 10) || productos[0];",
+                  "pm.environment.set('productoId', util.id);",
+                  "console.log('Producto para las pruebas:', util.sku, 'stock', util.stock);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlCatalogo}}/api/catalog",
+              "host": ["{{urlCatalogo}}"],
+              "path": ["api", "catalog"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1. Topologia y metricas",
+      "item": [
+        {
+          "name": "Metricas del broker",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const m = pm.response.json();",
+                  "",
+                  "pm.test('Las seis colas del caso estan activas', () => {",
+                  "    pm.expect(m.colasEsperadas).to.eql(6);",
+                  "    pm.expect(m.colasActivas).to.eql(6);",
+                  "});",
+                  "",
+                  "pm.test('Hay un consumidor por cola funcional', () => {",
+                  "    // Si da 0, notify no esta arriba y el resto de la coleccion no sirve.",
+                  "    pm.expect(m.consumidores).to.eql(3);",
+                  "});",
+                  "",
+                  "pm.test('La tasa de DLQ es una proporcion valida', () => {",
+                  "    pm.expect(m.tasaDlq).to.be.at.least(0);",
+                  "    pm.expect(m.tasaDlq).to.be.at.most(1);",
+                  "});",
+                  "",
+                  "console.log('Pendientes:', m.mensajesPendientes, '| En DLQ:', m.mensajesEnDlq);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/metricas",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "metricas"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar q.cmd.email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const cola = pm.response.json();",
+                  "pm.test('Es la cola del caso y tiene su consumidor', () => {",
+                  "    pm.expect(cola.nombre).to.eql('q.cmd.email');",
+                  "    pm.expect(cola.consumidores).to.eql(1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Flujo normal: ACK",
+      "item": [
+        {
+          "name": "Crear pedido valido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Crear el pedido responde 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const pedido = pm.response.json();",
+                  "pm.test('Nace en CREADO', () => pm.expect(pedido.estado).to.eql('CREADO'));",
+                  "pm.environment.set('pedidoId', pedido.id);",
+                  "console.log('Pedido:', pedido.codigo);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Normal\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders"]
+            },
+            "description": "Crear un pedido NO publica mensajes: todavia no hay nada que notificar."
+          },
+          "response": []
+        },
+        {
+          "name": "Aceptar: publica email y kitchen",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Aceptar responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Queda ACEPTADO', () => pm.expect(pm.response.json().estado).to.eql('ACEPTADO'));",
+                  "",
+                  "// Aceptar publica dos mensajes: cmd.direct/email.send hacia q.cmd.email",
+                  "// y cmd.topic/kitchen.ticket.new hacia q.cmd.kitchen.",
+                  "// En el log de notify deben aparecer el CORREO ENVIADO, el TICKET DE",
+                  "// COCINA y los dos ACK MANUAL ENVIADO."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Las colas quedaron vacias (ACK)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "// El consumo es asincrono: medir de inmediato da lecturas falsas. En vez",
+                  "// de esperar a ciegas, se repite esta misma peticion hasta que la cola se",
+                  "// vacia o se agotan los intentos. Necesita el Collection Runner con un",
+                  "// Delay configurado; en una peticion suelta, setNextRequest no hace nada.",
+                  "const intentos = Number(pm.environment.get('intentosEspera') || 0);",
+                  "const cola = pm.response.json();",
+                  "",
+                  "if (cola.mensajes > 0 && intentos < 10) {",
+                  "    pm.environment.set('intentosEspera', intentos + 1);",
+                  "    postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "    pm.environment.unset('intentosEspera');",
+                  "    pm.test('q.cmd.email quedo sin mensajes: el consumidor confirmo', () => {",
+                  "        pm.expect(cola.mensajes).to.eql(0);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "La DLQ sigue vacia",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('q.cmd.email.dlq esta vacia: nada fallo', () => {",
+                  "    pm.expect(pm.response.json().mensajes).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Error controlado: NACK y DLQ",
+      "item": [
+        {
+          "name": "Crear pedido con error permanente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Crear el pedido responde 201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('pedidoId', pm.response.json().id);",
+                  "",
+                  "// El error se provoca con un DATO, no tocando codigo ni apagando nada:",
+                  "// el correo error-permanente@ hace que el consumidor falle de forma",
+                  "// definitiva y rechace el mensaje de inmediato, sin reintentar."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteEmail\": \"error-permanente@pedidos360.cl\",\n  \"clienteNombre\": \"Cliente Con Correo Invalido\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Aceptar: el consumidor fallara",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Aceptar responde 200: el pedido SI se acepto', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// El negocio no se entera de la falla del consumidor, y es correcto:",
+                  "// de eso se trata desacoplar. El pedido queda ACEPTADO y el problema",
+                  "// de la notificacion se resuelve por el lado de la DLQ."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "El mensaje esta en q.cmd.email.dlq",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "pm.test('La DLQ recibio el mensaje rechazado', () => {",
+                  "    pm.expect(pm.response.json().mensajes).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "// Evidencia complementaria en el log de notify:",
+                  "//   ERROR NO RECUPERABLE ... no se reintenta",
+                  "//   NACK SIN REQUEUE ENVIADO ... sale por cmd.dead.dlx hacia q.cmd.email.dlq",
+                  "// Y en RabbitMQ Management, el mensaje visible con Get message."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "El ticket de cocina tambien fue a su DLQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('q.cmd.kitchen.dlq recibio su mensaje', () => {",
+                  "    pm.expect(pm.response.json().mensajes).to.be.at.least(1);",
+                  "});",
+                  "",
+                  "// Cada cola tiene SU propia DLQ: el fallo de un flujo no contamina",
+                  "// la cola de otro."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.kitchen.dlq",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.kitchen.dlq"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "La cola principal no quedo en bucle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const cola = pm.response.json();",
+                  "pm.test('q.cmd.email esta vacia: el mensaje no se reencolo', () => {",
+                  "    // Es la diferencia entre requeue=false y requeue=true. Con true, el",
+                  "    // mensaje volveria a la cola, fallaria igual y giraria para siempre.",
+                  "    pm.expect(cola.mensajes).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear pedido con error transitorio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Crear el pedido responde 201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('pedidoId', pm.response.json().id);",
+                  "",
+                  "// error-transitorio@ provoca una falla recuperable: el consumidor",
+                  "// reintenta 3 veces con backoff 1s, 2s y 4s, y recien al agotarlos",
+                  "// manda el mensaje a la DLQ. En el log se ven los cuatro intentos."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteEmail\": \"error-transitorio@pedidos360.cl\",\n  \"clienteNombre\": \"Cliente Con Proveedor Caido\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Aceptar y esperar los reintentos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Aceptar responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Mirar el log de notify ahora: los cuatro intentos y el backoff.",
+                  "// La peticion siguiente comprueba el resultado, y espera porque el",
+                  "// ciclo completo tarda unos 7 segundos."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tras agotar reintentos, el mensaje esta en la DLQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "// El ciclo de reintentos tarda unos 7 segundos (1s + 2s + 4s), asi que",
+                  "// esta peticion se repite hasta ver el segundo mensaje en la DLQ.",
+                  "const intentos = Number(pm.environment.get('intentosEspera') || 0);",
+                  "const enDlq = pm.response.json().mensajes;",
+                  "",
+                  "if (enDlq < 2 && intentos < 20) {",
+                  "    pm.environment.set('intentosEspera', intentos + 1);",
+                  "    postman.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "    pm.environment.unset('intentosEspera');",
+                  "    pm.test('La DLQ tiene los dos mensajes rechazados', () => {",
+                  "        // Uno del error permanente y otro del transitorio.",
+                  "        pm.expect(enDlq).to.be.at.least(2);",
+                  "    });",
+                  "}",
+                  "",
+                  "// Evidencia en el log:",
+                  "//   ERROR RECUPERABLE ... intento 1 de 4 ... reintento en 1000 ms",
+                  "//   ERROR RECUPERABLE ... intento 2 de 4 ... reintento en 2000 ms",
+                  "//   ERROR RECUPERABLE ... intento 3 de 4 ... reintento en 4000 ms",
+                  "//   REINTENTOS AGOTADOS ... 4 intentos",
+                  "//   NACK SIN REQUEUE ENVIADO"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Administracion de recursos",
+      "item": [
+        {
+          "name": "Crear cola valida (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "const r = pm.response.json();",
+                  "pm.test('Informa la operacion y el recurso', () => {",
+                  "    pm.expect(r.operacion).to.eql('crear');",
+                  "    pm.expect(r.recurso).to.eql('cola');",
+                  "    pm.expect(r.nombre).to.eql(pm.environment.get('colaPrueba'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName={{colaPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues"],
+              "query": [{ "key": "queueName", "value": "{{colaPrueba}}" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar la cola creada (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "const cola = pm.response.json();",
+                  "pm.test('Esta vacia y sin consumidores', () => {",
+                  "    pm.expect(cola.mensajes).to.eql(0);",
+                  "    pm.expect(cola.consumidores).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear exchange topic (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Informa el tipo creado', () => {",
+                  "    pm.expect(pm.response.json().detalle).to.include('topic');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName={{exchangePrueba}}&type=topic",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "exchanges"],
+              "query": [
+                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
+                { "key": "type", "value": "topic" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear binding (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Describe el enlace creado', () => {",
+                  "    const r = pm.response.json();",
+                  "    pm.expect(r.nombre).to.include(pm.environment.get('exchangePrueba'));",
+                  "    pm.expect(r.nombre).to.include(pm.environment.get('colaPrueba'));",
+                  "});",
+                  "",
+                  "// Verificarlo tambien en Management: Exchanges, ex.prueba.ep2, Bindings."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName={{colaPrueba}}&exchangeName={{exchangePrueba}}&routingKey={{routingKeyPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "bindings"],
+              "query": [
+                { "key": "queueName", "value": "{{colaPrueba}}" },
+                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
+                { "key": "routingKey", "value": "{{routingKeyPrueba}}" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar binding (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Para eliminar un binding hay que reconstruirlo igual que se creo:",
+                  "// cola, exchange y routing key. AMQP no tiene un id de binding, porque",
+                  "// el binding ES esa combinacion."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName={{colaPrueba}}&exchangeName={{exchangePrueba}}&routingKey={{routingKeyPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "bindings"],
+              "query": [
+                { "key": "queueName", "value": "{{colaPrueba}}" },
+                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
+                { "key": "routingKey", "value": "{{routingKeyPrueba}}" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Purgar la cola (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Informa cuantos mensajes descarto', () => {",
+                  "    pm.expect(pm.response.json().detalle).to.include('mensajes descartados');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}/purge",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}", "purge"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar la cola (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Informa la eliminacion', () => {",
+                  "    pm.expect(pm.response.json().operacion).to.eql('eliminar');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "La cola eliminada ya no existe (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 404', () => pm.response.to.have.status(404));",
+                  "",
+                  "// Esta es la comprobacion de que la cola desaparecio de verdad. El",
+                  "// DELETE no lo informa, porque el borrado en AMQP es idempotente y el",
+                  "// broker responde igual si el recurso estaba o no."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar el exchange (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/exchanges/{{exchangePrueba}}",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "exchanges", "{{exchangePrueba}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Validacion: HTTP 400",
+      "item": [
+        {
+          "name": "Cola sin nombre (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Nombra el parametro que falta', () => {",
+                  "    pm.expect(pm.response.json().parametro).to.eql('queueName');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cola con nombre en blanco (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "// No es lo mismo que no mandar el parametro, pero tampoco vale: en",
+                  "// RabbitMQ una cola con nombre vacio no es un error, es una cola con",
+                  "// nombre generado por el servidor. Y eso no es lo que nadie pidio."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName=%20%20%20",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues"],
+              "query": [{ "key": "queueName", "value": "%20%20%20" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Exchange sin tipo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Nombra el parametro type', () => {",
+                  "    pm.expect(pm.response.json().parametro).to.eql('type');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName=ex.invalido.ep2",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "exchanges"],
+              "query": [{ "key": "exchangeName", "value": "ex.invalido.ep2" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Exchange con tipo inexistente (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('El error enumera los tipos validos', () => {",
+                  "    const error = pm.response.json().error;",
+                  "    pm.expect(error).to.include('direct');",
+                  "    pm.expect(error).to.include('topic');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName=ex.invalido.ep2&type=directo",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "exchanges"],
+              "query": [
+                { "key": "exchangeName", "value": "ex.invalido.ep2" },
+                { "key": "type", "value": "directo" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Binding sin exchange (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Nombra exchangeName', () => {",
+                  "    pm.expect(pm.response.json().parametro).to.eql('exchangeName');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName=q.invalida.ep2&routingKey=rk.ep2",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "bindings"],
+              "query": [
+                { "key": "queueName", "value": "q.invalida.ep2" },
+                { "key": "routingKey", "value": "rk.ep2" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Binding sin routing key (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Nombra routingKey', () => {",
+                  "    pm.expect(pm.response.json().parametro).to.eql('routingKey');",
+                  "});",
+                  "",
+                  "// Los tres parametros son obligatorios porque un binding ES la",
+                  "// combinacion de los tres: sin uno no hay nada que crear."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName=q.invalida.ep2&exchangeName=cmd.direct",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "bindings"],
+              "query": [
+                { "key": "queueName", "value": "q.invalida.ep2" },
+                { "key": "exchangeName", "value": "cmd.direct" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar cola inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 404 y no 500', () => pm.response.to.have.status(404));",
+                  "pm.test('Explica el problema', () => {",
+                  "    pm.expect(pm.response.json().error).to.include('no existe');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.no.existe.ep2",
+              "host": ["{{urlAdmin}}"],
+              "path": ["api", "rabbitmq", "queues", "q.no.existe.ep2"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. EP1 sigue funcionando",
+      "item": [
+        {
+          "name": "Stock insuficiente sigue dando 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 409', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Ambicioso\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 999999 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear pedido para la transicion invalida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('pedidoId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Normal\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Despachar sin aceptar sigue dando 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "// Y como la transicion no es valida, no se publico ningun mensaje:",
+                  "// la publicacion va despues de la transicion, nunca antes."
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/ship",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders", "{{pedidoId}}", "ship"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pedido inexistente sigue dando 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{urlPedidos}}/api/orders/999999",
+              "host": ["{{urlPedidos}}"],
+              "path": ["api", "orders", "999999"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
