@@ -8,6 +8,7 @@ import cl.duoc.pedidos360.orders.domain.Pedido;
 import cl.duoc.pedidos360.orders.domain.PedidoItem;
 import cl.duoc.pedidos360.orders.exception.RecursoNoEncontradoException;
 import cl.duoc.pedidos360.orders.exception.ReglaNegocioException;
+import cl.duoc.pedidos360.orders.messaging.PublicadorComandos;
 import cl.duoc.pedidos360.orders.repository.PedidoRepository;
 import cl.duoc.pedidos360.orders.web.dto.CrearPedidoRequest;
 import cl.duoc.pedidos360.orders.web.dto.LineaPedidoRequest;
@@ -34,10 +35,13 @@ public class PedidoService {
 
     private final PedidoRepository repositorio;
     private final CatalogClient catalogo;
+    private final PublicadorComandos publicador;
 
-    public PedidoService(PedidoRepository repositorio, CatalogClient catalogo) {
+    public PedidoService(PedidoRepository repositorio, CatalogClient catalogo,
+                         PublicadorComandos publicador) {
         this.repositorio = repositorio;
         this.catalogo = catalogo;
+        this.publicador = publicador;
     }
 
     @Transactional(readOnly = true)
@@ -127,25 +131,52 @@ public class PedidoService {
         catalogo.reservarStock(pedido.getCodigo(), aLineasDeStock(pedido));
 
         log.info("Pedido aceptado y stock descontado. codigo={}", pedido.getCodigo());
+
+        // La publicacion va al final, cuando la transicion y el descuento de stock
+        // ya tuvieron exito. Si el catalogo rechaza por falta de stock la excepcion
+        // propaga antes de llegar aqui y no se emite ningun mensaje: nunca se
+        // notifica al cliente un pedido que en realidad no se acepto.
+        //
+        // Aceptar genera dos mensajes porque son dos trabajos distintos: avisar al
+        // cliente y encolar el ticket en cocina. Comparten correlationId -el codigo
+        // del pedido- para poder seguirlos juntos en los logs del consumidor.
+        publicador.publicarEmail(pedido);
+        publicador.publicarKitchen(pedido);
+
         return PedidoResponse.desde(pedido);
     }
 
-    /** ACEPTADO -> EN_PREPARACION */
+    /**
+     * ACEPTADO -> EN_PREPARACION. No publica nada: el ticket de cocina ya se
+     * emitio al aceptar, y repetirlo aqui seria duplicar el trabajo.
+     */
     @Transactional
     public PedidoResponse preparar(Long id) {
-        return avanzar(id, EstadoPedido.EN_PREPARACION);
+        return PedidoResponse.desde(avanzar(id, EstadoPedido.EN_PREPARACION));
     }
 
-    /** EN_PREPARACION -> DESPACHADO. No se puede despachar sin haber aceptado. */
+    /**
+     * EN_PREPARACION -> DESPACHADO. No se puede despachar sin haber aceptado.
+     *
+     * Avisa al cliente que el pedido salio: segundo mensaje por cmd.direct con
+     * la routing key email.send, de nuevo hacia q.cmd.email.
+     */
     @Transactional
     public PedidoResponse despachar(Long id) {
-        return avanzar(id, EstadoPedido.DESPACHADO);
+        Pedido pedido = avanzar(id, EstadoPedido.DESPACHADO);
+        publicador.publicarEmail(pedido);
+        return PedidoResponse.desde(pedido);
     }
 
-    /** DESPACHADO -> ENTREGADO */
+    /**
+     * DESPACHADO -> ENTREGADO. Cierra el ciclo pidiendo el documento de venta
+     * por cmd.direct con la routing key invoice.gen hacia q.cmd.invoice.
+     */
     @Transactional
     public PedidoResponse entregar(Long id) {
-        return avanzar(id, EstadoPedido.ENTREGADO);
+        Pedido pedido = avanzar(id, EstadoPedido.ENTREGADO);
+        publicador.publicarInvoice(pedido);
+        return PedidoResponse.desde(pedido);
     }
 
     /**
@@ -171,13 +202,17 @@ public class PedidoService {
         return PedidoResponse.desde(pedido);
     }
 
-    private PedidoResponse avanzar(Long id, EstadoPedido destino) {
+    /**
+     * Devuelve la entidad y no el DTO porque quien llama necesita el Pedido para
+     * construir el mensaje: el productor arma el cuerpo desde el dominio.
+     */
+    private Pedido avanzar(Long id, EstadoPedido destino) {
         Pedido pedido = buscarConItems(id);
         EstadoPedido origen = pedido.getEstado();
         pedido.cambiarEstado(destino);
         Pedido guardado = repositorio.save(pedido);
         log.info("Pedido {} cambio de {} a {}", guardado.getCodigo(), origen, destino);
-        return PedidoResponse.desde(guardado);
+        return guardado;
     }
 
     private Pedido buscarConItems(Long id) {
