@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.4</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>cl.duoc.pedidos360</groupId>
+  <artifactId>ms-pedidos360-notify</artifactId>
+  <version>1.0.0</version>
+  <name>ms-pedidos360-notify</name>
+  <description>Microservicio consumidor RabbitMQ - EP2 DSY1107</description>
+
+  <properties>
+    <java.version>17</java.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+
+    <!-- Web y actuator solo para exponer /actuator/health. Este microservicio no
+         tiene API de negocio: su entrada son las colas, no HTTP. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- Reintentos con backoff del consumidor. Sin version: la hereda del
+         spring-boot-starter-parent, que ya fija una compatible con este Boot.
+         Fijarla a mano es arriesgarse a una combinacion que el starter no probo. -->
+    <dependency>
+      <groupId>org.springframework.retry</groupId>
+      <artifactId>spring-retry</artifactId>
+    </dependency>
+
+    <!-- NO lleva spring-boot-starter-data-jpa ni driver de base de datos: la guia
+         de EP2 define notify como consumidor sin DB. Si el consumidor pudiera
+         consultar Oracle, la tentacion seria completar datos desde la base y la
+         mensajeria quedaria decorativa. -->
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>ms-pedidos360-notify</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
