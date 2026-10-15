@@ -94,6 +94,24 @@ class RabbitMQControllerTest {
     }
 
     @Test
+    @DisplayName("El 400 declara Content-Length: si fuera chunked, el cliente lo recibiria vacio")
+    void elCuatrocientosDeclaraContentLength() throws Exception {
+        // Tomcat cierra la conexion despues de un 400. Sin Content-Length, el
+        // cliente se encuentra la conexion cerrada antes de leer el cuerpo: el
+        // codigo llega bien y el mensaje se pierde. Esta prueba fija que el
+        // filtro siga aplicandose a las respuestas de error.
+        org.springframework.mock.web.MockHttpServletResponse respuesta =
+                mockMvc.perform(post("/api/rabbitmq/queues").param("queueName", ""))
+                        .andExpect(status().isBadRequest())
+                        .andReturn().getResponse();
+
+        int bytes = respuesta.getContentAsByteArray().length;
+        org.assertj.core.api.Assertions.assertThat(bytes).isPositive();
+        org.assertj.core.api.Assertions.assertThat(respuesta.getHeader("Content-Length"))
+                .isEqualTo(String.valueOf(bytes));
+    }
+
+    @Test
     @DisplayName("Cola con nombre en blanco: 400, no es lo mismo que sin nombre pero tampoco vale")
     void colaConNombreEnBlanco() throws Exception {
         mockMvc.perform(post("/api/rabbitmq/queues").param("queueName", "   "))
