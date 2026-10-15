@@ -200,6 +200,11 @@ El microservicio administrador **no declara topología al arrancar** (`spring.ra
 
 ## Puesta en marcha (AWS, EP1)
 
+> **La base de RDS ya no existe.** Se elimino el 15 de octubre de 2026: en EP2 la persistencia pasa a Oracle Cloud (Autonomous Database). Los pasos de esta seccion que la arrancan o la detienen quedan como registro de como funcionaba EP1.
+>
+> El motivo fue el costo. Detenerla no alcanzaba: una instancia RDS detenida sigue cobrando su almacenamiento, y **a los 7 dias AWS la vuelve a encender sola**. Eso paso el 5 de octubre y la base quedo diez dias corriendo con licencia Oracle SE2, que se llevo la mayor parte del credito del Learner Lab. Para revisar que nada mas este cobrando: `aws/05-revisar-gasto.ps1`.
+
+
 El entorno vive en AWS Academy Learner Lab, cuya sesión caduca cada ~4 horas: la EC2 se detiene sola y la base hay que arrancarla a mano. Estos cinco pasos dejan todo operativo. **Cuentan unos 10 minutos**, casi todos esperando a Oracle.
 
 **1. Iniciar el lab** en AWS Academy y recargar las credenciales:
