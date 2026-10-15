@@ -291,7 +291,12 @@ try {
     Comprobar "Ninguna DLQ recibio nada en el flujo normal" `
         ((Mensajes-En "q.cmd.email.dlq") -eq 0 -and (Mensajes-En "q.cmd.kitchen.dlq") -eq 0)
 
+    # Las cuatro lineas que la guia de prueba empirica pide mostrar en pantalla.
     $logNotify = Get-Content "$carpetaLogs\notify.log" -Raw -ErrorAction SilentlyContinue
+    Comprobar "El log de notify nombra la Queue y la Routing Key del mensaje" `
+        ($logNotify -match "MENSAJE RECIBIDO \| Queue: q\.cmd\.email \| Routing Key: email\.send")
+    Comprobar "El log de notify muestra el procesamiento exitoso" `
+        ($logNotify -match "PROCESAMIENTO EXITOSO")
     Comprobar "El log de notify muestra el ACK manual" `
         ($logNotify -match "ACK MANUAL ENVIADO")
     Comprobar "El log de notify muestra el correo procesado" `
@@ -311,6 +316,12 @@ try {
     $logNotify = Get-Content "$carpetaLogs\notify.log" -Raw -ErrorAction SilentlyContinue
     Comprobar "El log de notify muestra el documento generado" `
         ($logNotify -match "DOCUMENTO GENERADO")
+
+    $logOrders = Get-Content "$carpetaLogs\orders.log" -Raw -ErrorAction SilentlyContinue
+    Comprobar "El log del productor nombra Exchange, Routing Key, eventId y correlationId" `
+        ($logOrders -match "Publicando mensaje \| Exchange: cmd\.direct \| Routing Key: email\.send \| eventId: .+ \| correlationId: ")
+    Comprobar "El productor publico tambien por cmd.topic" `
+        ($logOrders -match "Exchange: cmd\.topic \| Routing Key: kitchen\.ticket\.new")
     Comprobar "q.cmd.invoice quedo vacia" ((Mensajes-En "q.cmd.invoice") -eq 0)
 
     # -----------------------------------------------------------------------

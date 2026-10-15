@@ -52,7 +52,8 @@ class EjecutorDeConsumoTest {
     }
 
     private void ejecutar(Runnable trabajo) throws IOException {
-        ejecutor.ejecutar(RabbitMQConfig.QUEUE_EMAIL, comando(), canal, TAG, trabajo);
+        ejecutor.ejecutar(RabbitMQConfig.QUEUE_EMAIL, RabbitMQConfig.RK_EMAIL_SEND,
+                comando(), canal, TAG, trabajo);
     }
 
     @Test

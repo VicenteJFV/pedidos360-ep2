@@ -39,10 +39,11 @@ public class ConsumidorEmail {
      */
     @RabbitListener(queues = RabbitMQConfig.QUEUE_EMAIL)
     public void consumirEmail(ComandoPedido comando,
+                              @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
                               Channel canal,
                               @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
 
-        ejecutor.ejecutar(RabbitMQConfig.QUEUE_EMAIL, comando, canal, deliveryTag,
+        ejecutor.ejecutar(RabbitMQConfig.QUEUE_EMAIL, routingKey, comando, canal, deliveryTag,
                 () -> notificaciones.enviar(comando));
     }
 }

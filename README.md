@@ -104,6 +104,8 @@ La prueba de error tiene que poder ejecutarse en vivo durante la presentación s
 | `error-permanente@pedidos360.cl` | falla definitiva → NACK inmediato → DLQ |
 | `error-transitorio@pedidos360.cl` | falla recuperable → 4 intentos → DLQ |
 
+Es el **dato de prueba** que la guía de prueba empírica pide tener definido y preparado de antemano. El guion completo está en [`pruebas/DEMOSTRACION.md`](pruebas/DEMOSTRACION.md).
+
 Se crea el pedido con ese correo, se acepta, y el consumidor falla **solo para ese mensaje** mientras los demás siguen pasando. Un pedido con `error-permanente@` deja un mensaje en cada una de las tres DLQ a lo largo del ciclo completo.
 
 ### Retención y limpieza
@@ -152,7 +154,9 @@ java -jar ms-pedidos360-rabbitadmin/target/ms-pedidos360-rabbitadmin.jar
 
 El catálogo primero, porque pedidos lo consulta al crear un pedido. `notify` conviene dejarlo a la vista: su consola es la evidencia.
 
-**4. Postman**: importar [`pruebas/Pedidos360-EP2.postman_collection.json`](pruebas/Pedidos360-EP2.postman_collection.json) y su environment, y correr con **Collection Runner, la colección completa y `Delay = 1000 ms`**. Dos comprobaciones repiten su petición hasta que el consumidor termina, y eso usa `setNextRequest`, que solo funciona dentro del Runner.
+**4. El guion de la prueba empírica** está en [`pruebas/DEMOSTRACION.md`](pruebas/DEMOSTRACION.md): las tres demostraciones obligatorias paso a paso, con los comandos exactos, las líneas de log que hay que señalar y las respuestas a las preguntas que es razonable esperar.
+
+**5. Postman**: importar [`pruebas/Pedidos360-EP2.postman_collection.json`](pruebas/Pedidos360-EP2.postman_collection.json) y su environment, y correr con **Collection Runner, la colección completa y `Delay = 1000 ms`**. Dos comprobaciones repiten su petición hasta que el consumidor termina, y eso usa `setNextRequest`, que solo funciona dentro del Runner.
 
 ## API del microservicio administrador
 

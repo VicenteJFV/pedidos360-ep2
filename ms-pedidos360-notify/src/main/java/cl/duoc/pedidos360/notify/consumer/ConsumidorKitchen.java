@@ -32,10 +32,11 @@ public class ConsumidorKitchen {
 
     @RabbitListener(queues = RabbitMQConfig.QUEUE_KITCHEN)
     public void consumirKitchen(ComandoPedido comando,
+                                @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
                                 Channel canal,
                                 @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
 
-        ejecutor.ejecutar(RabbitMQConfig.QUEUE_KITCHEN, comando, canal, deliveryTag,
+        ejecutor.ejecutar(RabbitMQConfig.QUEUE_KITCHEN, routingKey, comando, canal, deliveryTag,
                 () -> cocina.imprimirTicket(comando));
     }
 }

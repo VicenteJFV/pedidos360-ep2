@@ -68,17 +68,24 @@ public class EjecutorDeConsumo {
     }
 
     /**
-     * @param cola         cola desde la que se recibio, para el log
+     * Las etiquetas del log -Queue, Routing Key, eventId, correlationId- son las
+     * que la guia de prueba empirica pide mostrar en pantalla durante la
+     * presentacion, escritas con esas mismas palabras. El procesamiento exitoso y
+     * el ACK se registran en dos lineas separadas porque son los pasos 4 y 5 de
+     * esa guia, y conviene poder senalar cada uno.
+     *
+     * @param cola         cola desde la que se recibio
+     * @param routingKey   clave con la que el mensaje llego a la cola
      * @param comando      mensaje ya deserializado
      * @param canal        canal AMQP, necesario para confirmar a mano
      * @param deliveryTag  identificador de la entrega dentro de ese canal
      * @param trabajo      procesamiento real del dominio
      */
-    public void ejecutar(String cola, ComandoPedido comando, Channel canal, long deliveryTag,
-                         Runnable trabajo) throws IOException {
+    public void ejecutar(String cola, String routingKey, ComandoPedido comando,
+                         Channel canal, long deliveryTag, Runnable trabajo) throws IOException {
 
-        log.info("MENSAJE RECIBIDO | Cola: {} | tipo: {} | pedido: {} | eventId: {} | correlationId: {} | Delivery Tag: {}",
-                cola, comando.tipo(), comando.codigoPedido(),
+        log.info("MENSAJE RECIBIDO | Queue: {} | Routing Key: {} | tipo: {} | pedido: {} | eventId: {} | correlationId: {} | Delivery Tag: {}",
+                cola, routingKey, comando.tipo(), comando.codigoPedido(),
                 comando.eventId(), comando.correlationId(), deliveryTag);
 
         int total = politica.intentosTotales();
@@ -87,31 +94,34 @@ public class EjecutorDeConsumo {
             try {
                 trabajo.run();
 
+                log.info("PROCESAMIENTO EXITOSO | Queue: {} | Routing Key: {} | eventId: {} | pedido: {} | intento {} de {}",
+                        cola, routingKey, comando.eventId(), comando.codigoPedido(), intento, total);
+
                 canal.basicAck(deliveryTag, false);
-                log.info("ACK MANUAL ENVIADO | Cola: {} | eventId: {} | pedido {} procesado correctamente en el intento {}",
-                        cola, comando.eventId(), comando.codigoPedido(), intento);
+                log.info("ACK MANUAL ENVIADO | Queue: {} | eventId: {} | Delivery Tag: {}",
+                        cola, comando.eventId(), deliveryTag);
                 return;
 
             } catch (ErrorPermanenteException e) {
-                log.error("ERROR NO RECUPERABLE | Cola: {} | eventId: {} | motivo: {} | no se reintenta",
+                log.error("ERROR NO RECUPERABLE | Queue: {} | eventId: {} | motivo: {} | no se reintenta",
                         cola, comando.eventId(), e.getMessage());
                 rechazar(cola, comando, canal, deliveryTag);
                 return;
 
             } catch (ErrorTransitorioException e) {
                 if (intento == total) {
-                    log.error("REINTENTOS AGOTADOS | Cola: {} | eventId: {} | {} intentos | motivo: {}",
+                    log.error("REINTENTOS AGOTADOS | Queue: {} | eventId: {} | {} intentos | motivo: {}",
                             cola, comando.eventId(), total, e.getMessage());
                     rechazar(cola, comando, canal, deliveryTag);
                     return;
                 }
 
                 Duration espera = politica.esperaTrasIntento(intento);
-                log.warn("ERROR RECUPERABLE | Cola: {} | eventId: {} | intento {} de {} | motivo: {} | reintento en {} ms",
+                log.warn("ERROR RECUPERABLE | Queue: {} | eventId: {} | intento {} de {} | motivo: {} | reintento en {} ms",
                         cola, comando.eventId(), intento, total, e.getMessage(), espera.toMillis());
 
                 if (!esperar(espera)) {
-                    log.error("REINTENTO INTERRUMPIDO | Cola: {} | eventId: {} | se rechaza para no dejarlo sin confirmar",
+                    log.error("REINTENTO INTERRUMPIDO | Queue: {} | eventId: {} | se rechaza para no dejarlo sin confirmar",
                             cola, comando.eventId());
                     rechazar(cola, comando, canal, deliveryTag);
                     return;
@@ -122,7 +132,7 @@ public class EjecutorDeConsumo {
                 // del entorno: reintentarla daria el mismo resultado. Se rechaza y
                 // se deja la traza completa, para que la DLQ tenga el mensaje y el
                 // log tenga la causa.
-                log.error("ERROR INESPERADO | Cola: {} | eventId: {} | se rechaza sin reintentar",
+                log.error("ERROR INESPERADO | Queue: {} | eventId: {} | se rechaza sin reintentar",
                         cola, comando.eventId(), e);
                 rechazar(cola, comando, canal, deliveryTag);
                 return;
@@ -135,7 +145,7 @@ public class EjecutorDeConsumo {
 
         canal.basicNack(deliveryTag, false, false);
 
-        log.error("NACK SIN REQUEUE ENVIADO | Cola: {} | eventId: {} | el mensaje sale por {} hacia {}",
+        log.error("NACK SIN REQUEUE ENVIADO | Queue: {} | eventId: {} | el mensaje sale por {} hacia {}",
                 cola, comando.eventId(), RabbitMQConfig.EXCHANGE_DLX, RabbitMQConfig.dlqDe(cola));
     }
 

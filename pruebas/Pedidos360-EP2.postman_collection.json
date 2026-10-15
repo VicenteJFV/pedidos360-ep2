@@ -907,7 +907,7 @@
           "response": []
         },
         {
-          "name": "Cola con nombre en blanco (400)",
+          "name": "Cola con nombre vacio (400)",
           "event": [
             {
               "listen": "test",
@@ -915,6 +915,9 @@
                 "exec": [
                   "pm.test('Responde 400', () => pm.response.to.have.status(400));",
                   "",
+                  "// Es el caso exacto que pide la guia de prueba empirica:",
+                  "// queueName = \"\" debe responder 400 y NO crear el recurso.",
+                  "//",
                   "// No es lo mismo que no mandar el parametro, pero tampoco vale: en",
                   "// RabbitMQ una cola con nombre vacio no es un error, es una cola con",
                   "// nombre generado por el servidor. Y eso no es lo que nadie pidio."
@@ -927,10 +930,10 @@
             "method": "POST",
             "header": [],
             "url": {
-              "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName=%20%20%20",
+              "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName=",
               "host": ["{{urlAdmin}}"],
               "path": ["api", "rabbitmq", "queues"],
-              "query": [{ "key": "queueName", "value": "%20%20%20" }]
+              "query": [{ "key": "queueName", "value": "" }]
             }
           },
           "response": []

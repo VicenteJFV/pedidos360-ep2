@@ -25,10 +25,11 @@ public class ConsumidorInvoice {
 
     @RabbitListener(queues = RabbitMQConfig.QUEUE_INVOICE)
     public void consumirInvoice(ComandoPedido comando,
+                                @Header(AmqpHeaders.RECEIVED_ROUTING_KEY) String routingKey,
                                 Channel canal,
                                 @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
 
-        ejecutor.ejecutar(RabbitMQConfig.QUEUE_INVOICE, comando, canal, deliveryTag,
+        ejecutor.ejecutar(RabbitMQConfig.QUEUE_INVOICE, routingKey, comando, canal, deliveryTag,
                 () -> documentos.generar(comando));
     }
 }
