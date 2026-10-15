@@ -63,6 +63,23 @@
       <version>${oracle-database.version}</version>
       <scope>runtime</scope>
     </dependency>
+    <!-- oraclepki por si sola no alcanza para abrir cwallet.sso: el driver
+         carga clases de criptografia que viven en osdt_core y osdt_cert, y sin
+         ellas la conexion falla con NoClassDefFoundError:
+         oracle/security/crypto/core/AuthenticationException. En EP1 no se
+         noto porque la base en RDS no usaba wallet. -->
+    <dependency>
+      <groupId>com.oracle.database.security</groupId>
+      <artifactId>osdt_core</artifactId>
+      <version>${oracle-database.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.oracle.database.security</groupId>
+      <artifactId>osdt_cert</artifactId>
+      <version>${oracle-database.version}</version>
+      <scope>runtime</scope>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

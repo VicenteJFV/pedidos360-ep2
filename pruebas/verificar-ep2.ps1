@@ -25,12 +25,29 @@
 
 .EJEMPLO
     .\verificar-ep2.ps1 -Compilar
+
+.EJEMPLO
+    # Contra Oracle Autonomous Database en vez de H2, con prueba de persistencia
+    .\verificar-ep2.ps1 -Oracle
+
+.NOTAS
+    Con -Oracle, la contrasena de ADMIN se pide UNA vez en un campo oculto y se
+    guarda cifrada con DPAPI en %LOCALAPPDATA%\pedidos360\, fuera del repositorio.
+    DPAPI la ata a tu usuario de Windows en esta maquina: otro usuario, u otro
+    equipo con el mismo archivo, no la puede descifrar. Para cambiarla:
+
+        .\verificar-ep2.ps1 -Oracle -OlvidarCredencial
 #>
 [CmdletBinding()]
 param(
     [string]$RaizProyecto = (Split-Path $PSScriptRoot -Parent),
     [switch]$Compilar,
-    [int]$SegundosEspera = 90
+    [int]$SegundosEspera = 90,
+
+    [switch]$Oracle,
+    [switch]$OlvidarCredencial,
+    [string]$Wallet = (Join-Path (Split-Path $PSScriptRoot -Parent) "wallet"),
+    [string]$AliasOracle = "pedidos360_tp"
 )
 
 $ErrorActionPreference = "Stop"
@@ -170,10 +187,82 @@ try {
     throw "RabbitMQ Management no responde en localhost:15672. Levanta el cluster: cd ..\rabbitmq-cluster ; .\levantar-cluster.ps1"
 }
 
+# ---------------------------------------------------------------------------
+# Oracle Autonomous Database (opcional)
+# ---------------------------------------------------------------------------
+
+$variablesOracle = @("SPRING_PROFILE", "TNS_ADMIN", "ORACLE_JDBC_URL", "ORACLE_USER", "ORACLE_PASSWORD")
+
+if ($Oracle) {
+    foreach ($archivo in @("tnsnames.ora", "cwallet.sso")) {
+        if (-not (Test-Path (Join-Path $Wallet $archivo))) {
+            throw "No esta $archivo en $Wallet . Descarga el wallet desde la consola de OCI y descomprimelo ahi."
+        }
+    }
+    if (-not (Select-String -Path (Join-Path $Wallet "tnsnames.ora") -Pattern "^$AliasOracle\s*=" -Quiet)) {
+        throw "El alias $AliasOracle no esta en el tnsnames.ora del wallet."
+    }
+
+    $carpetaCredencial = Join-Path $env:LOCALAPPDATA "pedidos360"
+    $archivoCredencial = Join-Path $carpetaCredencial "oracle-admin.xml"
+
+    if ($OlvidarCredencial -and (Test-Path $archivoCredencial)) {
+        Remove-Item $archivoCredencial -Force
+        Write-Host "  Credencial anterior olvidada." -ForegroundColor DarkGray
+    }
+
+    if (Test-Path $archivoCredencial) {
+        $credencial = Import-Clixml $archivoCredencial
+    } else {
+        Write-Host ""
+        Write-Host "Contrasena de ADMIN de la base pedidos360 en Oracle Cloud." -ForegroundColor Cyan
+        Write-Host "Se guarda cifrada para tu usuario de Windows y no vuelve a pedirse." -ForegroundColor DarkGray
+        $secreto = Read-Host "Contrasena" -AsSecureString
+        $credencial = New-Object System.Management.Automation.PSCredential("ADMIN", $secreto)
+        if (-not (Test-Path $carpetaCredencial)) { New-Item -ItemType Directory -Path $carpetaCredencial | Out-Null }
+        $credencial | Export-Clixml $archivoCredencial
+    }
+
+    # Las variables viven solo en este proceso y las heredan los java que lance.
+    # Se borran en el finally para que no queden en la sesion de PowerShell.
+    $walletJdbc = $Wallet.Replace("\", "/")
+    $env:SPRING_PROFILE  = "oracle"
+    $env:TNS_ADMIN       = $Wallet
+    $env:ORACLE_JDBC_URL = "jdbc:oracle:thin:@$AliasOracle`?TNS_ADMIN=$walletJdbc"
+    $env:ORACLE_USER     = $credencial.UserName
+    $env:ORACLE_PASSWORD = $credencial.GetNetworkCredential().Password
+
+    # La primera conexion a Santiago incluye el apreton mTLS, y en el primer
+    # arranque Hibernate crea las tablas y el catalogo siembra los datos.
+    if ($SegundosEspera -lt 180) { $SegundosEspera = 180 }
+}
+
 $carpetaLogs = Join-Path $RaizProyecto "logs"
 if (-not (Test-Path $carpetaLogs)) { New-Item -ItemType Directory -Path $carpetaLogs | Out-Null }
 
-$procesos = @()
+$procesos = @{}
+
+function Iniciar-Modulo {
+    param($Modulo, [string]$Sufijo = "")
+    $corto = $Modulo.Nombre.Replace("ms-pedidos360-", "") + $Sufijo
+    return Start-Process -FilePath "java" -ArgumentList "-jar `"$($Modulo.Jar)`"" `
+        -RedirectStandardOutput "$carpetaLogs\$corto.log" `
+        -RedirectStandardError "$carpetaLogs\$corto.err" `
+        -WindowStyle Hidden -PassThru
+}
+
+function Esperar-Salud {
+    param($Lista, [int]$Segundos)
+    for ($s = 1; $s -le $Segundos; $s++) {
+        Start-Sleep -Seconds 1
+        $vivos = 0
+        foreach ($m in $Lista) {
+            if ((Invoke-Api GET "$($m.Url)/actuator/health").Status -eq 200) { $vivos++ }
+        }
+        if ($vivos -eq @($Lista).Count) { return $s }
+    }
+    return -1
+}
 
 try {
     Write-Host ""
@@ -185,24 +274,18 @@ try {
 
     Write-Host ""
     Write-Host "=== Arrancando microservicios ===" -ForegroundColor Cyan
+    if ($Oracle) {
+        Write-Host "  base: Oracle Autonomous Database ($AliasOracle)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "  base: H2 en memoria (perfil dev). Para Oracle Cloud: -Oracle" -ForegroundColor DarkGray
+    }
 
     foreach ($m in $modulos) {
-        $corto = $m.Nombre.Replace("ms-pedidos360-", "")
-        $procesos += Start-Process -FilePath "java" -ArgumentList "-jar `"$($m.Jar)`"" `
-            -RedirectStandardOutput "$carpetaLogs\$corto.log" `
-            -RedirectStandardError "$carpetaLogs\$corto.err" `
-            -WindowStyle Hidden -PassThru
+        $procesos[$m.Nombre] = Iniciar-Modulo $m
     }
 
-    $arriba = $false
-    for ($i = 1; $i -le $SegundosEspera; $i++) {
-        Start-Sleep -Seconds 1
-        $vivos = 0
-        foreach ($m in $modulos) {
-            if ((Invoke-Api GET "$($m.Url)/actuator/health").Status -eq 200) { $vivos++ }
-        }
-        if ($vivos -eq $modulos.Count) { $arriba = $true; break }
-    }
+    $i = Esperar-Salud $modulos $SegundosEspera
+    $arriba = $i -gt 0
 
     if (-not $arriba) {
         Write-Host "Los servicios no respondieron en $SegundosEspera segundos." -ForegroundColor Red
@@ -461,11 +544,61 @@ try {
     Comprobar "Pedido inexistente sigue devolviendo 404" ($noExiste.Status -eq 404) `
         "status=$($noExiste.Status)"
 
+    # -----------------------------------------------------------------------
+    # Persistencia (solo con -Oracle)
+    # -----------------------------------------------------------------------
+    # La misma prueba que en EP1 con RDS: se reinician los dos microservicios
+    # que tienen base y se comprueba que lo escrito sigue ahi. Con H2 en memoria
+    # no tendria sentido, porque la base muere con el proceso.
+
+    if ($Oracle) {
+        Write-Host ""
+        Write-Host "=== Persistencia en Oracle Cloud ===" -ForegroundColor Cyan
+
+        $productosAntes = @((Invoke-Api GET "$urlCat/api/catalog").Json).Count
+        $stockAntes = [int](Invoke-Api GET "$urlCat/api/catalog/$($producto.id)").Json.stock
+
+        $conBase = @($modulos | Where-Object { $_.Nombre -in @("ms-pedidos360-catalog", "ms-pedidos360-orders") })
+        foreach ($m in $conBase) {
+            Stop-Process -Id $procesos[$m.Nombre].Id -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "  catalogo y pedidos detenidos; arrancando de nuevo..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 3
+
+        # Logs aparte: los originales tienen la evidencia de la publicacion.
+        foreach ($m in $conBase) {
+            $procesos[$m.Nombre] = Iniciar-Modulo $m "-reinicio"
+        }
+
+        $t = Esperar-Salud $conBase $SegundosEspera
+        Comprobar "Catalogo y pedidos vuelven a arrancar contra Oracle" ($t -gt 0) `
+            "no respondieron en $SegundosEspera s; revisa logs\catalog-reinicio.log"
+
+        if ($t -gt 0) {
+            $despues = Invoke-Api GET "$urlPed/api/orders/$idOk"
+            Comprobar "El pedido entregado sobrevive al reinicio, con su estado" `
+                ($despues.Status -eq 200 -and $despues.Json.estado -eq "ENTREGADO") `
+                "status=$($despues.Status) estado=$($despues.Json.estado)"
+
+            $stockDespues = [int](Invoke-Api GET "$urlCat/api/catalog/$($producto.id)").Json.stock
+            Comprobar "El stock descontado sobrevive al reinicio" ($stockDespues -eq $stockAntes) `
+                "antes=$stockAntes despues=$stockDespues"
+
+            $productosDespues = @((Invoke-Api GET "$urlCat/api/catalog").Json).Count
+            Comprobar "Los datos de demostracion no se duplicaron al reiniciar" `
+                ($productosDespues -eq $productosAntes) "antes=$productosAntes despues=$productosDespues"
+        }
+    }
+
 } finally {
     Write-Host ""
     Write-Host "=== Apagando microservicios ===" -ForegroundColor Cyan
-    foreach ($p in $procesos) {
+    foreach ($p in $procesos.Values) {
         if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+    }
+    if ($Oracle) {
+        # La contrasena no debe quedar en el entorno de la sesion.
+        foreach ($v in $variablesOracle) { Remove-Item "Env:\$v" -ErrorAction SilentlyContinue }
     }
     Write-Host "  (el cluster sigue arriba; para apagarlo: cd ..\rabbitmq-cluster ; docker compose down)" -ForegroundColor DarkGray
 }
