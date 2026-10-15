@@ -73,22 +73,25 @@ function Invoke-Api {
         $params.ContentType = "application/json; charset=utf-8"
     }
 
+    # Texto guarda el cuerpo crudo: cuando una comprobacion falla, el detalle
+    # puede mostrar exactamente que respondio el servicio, no solo el codigo.
     try {
         $r = Invoke-WebRequest @params
         $json = $null
         if ($r.Content) { try { $json = $r.Content | ConvertFrom-Json } catch { } }
-        return @{ Status = [int]$r.StatusCode; Json = $json }
+        return @{ Status = [int]$r.StatusCode; Json = $json; Texto = [string]$r.Content }
     } catch {
         $resp = $_.Exception.Response
-        if (-not $resp) { return @{ Status = 0; Json = $null } }
-        # En PowerShell 5.1 el cuerpo del error NO esta en el stream, que ya fue
-        # consumido: esta en ErrorDetails.Message. Leerlo del stream devuelve
-        # vacio y hace creer que el servicio no responde nada.
+        if (-not $resp) { return @{ Status = 0; Json = $null; Texto = $_.Exception.Message } }
+        # En PowerShell 5.1, cuando la respuesta es un error, PowerShell ya leyo el
+        # stream antes de lanzar la excepcion: el cuerpo queda en
+        # ErrorDetails.Message. Leer el stream otra vez sin rebobinarlo da vacio y
+        # hace creer que el servicio no respondio nada.
+        $texto = ""
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $texto = $_.ErrorDetails.Message }
         $json = $null
-        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
-            try { $json = $_.ErrorDetails.Message | ConvertFrom-Json } catch { }
-        }
-        return @{ Status = [int]$resp.StatusCode; Json = $json }
+        if ($texto) { try { $json = $texto | ConvertFrom-Json } catch { } }
+        return @{ Status = [int]$resp.StatusCode; Json = $json; Texto = $texto }
     }
 }
 
@@ -253,13 +256,17 @@ function Iniciar-Modulo {
 
 function Esperar-Salud {
     param($Lista, [int]$Segundos)
-    for ($s = 1; $s -le $Segundos; $s++) {
+    # Se mide con reloj y no contando vueltas: en Windows una conexion a un
+    # puerto que todavia no escucha tarda en ser rechazada, asi que cada vuelta
+    # del bucle dura varios segundos y contar vueltas subestima la espera.
+    $reloj = [Diagnostics.Stopwatch]::StartNew()
+    while ($reloj.Elapsed.TotalSeconds -lt $Segundos) {
         Start-Sleep -Seconds 1
         $vivos = 0
         foreach ($m in $Lista) {
             if ((Invoke-Api GET "$($m.Url)/actuator/health").Status -eq 200) { $vivos++ }
         }
-        if ($vivos -eq @($Lista).Count) { return $s }
+        if ($vivos -eq @($Lista).Count) { return [int][Math]::Ceiling($reloj.Elapsed.TotalSeconds) }
     }
     return -1
 }
@@ -501,7 +508,7 @@ try {
     $v1 = Invoke-Api POST "$urlAdmin/api/rabbitmq/queues"
     Comprobar "Cola sin nombre responde 400" ($v1.Status -eq 400) "status=$($v1.Status)"
     Comprobar "El 400 nombra el parametro que falta" ($v1.Json.parametro -eq "queueName") `
-        "parametro=$($v1.Json.parametro)"
+        "parametro=$($v1.Json.parametro) cuerpo=$($v1.Texto)"
 
     $v2 = Invoke-Api POST "$urlAdmin/api/rabbitmq/queues?queueName=%20%20"
     Comprobar "Cola con nombre en blanco responde 400" ($v2.Status -eq 400) "status=$($v2.Status)"
@@ -515,7 +522,7 @@ try {
     $v5 = Invoke-Api POST "$urlAdmin/api/rabbitmq/bindings?queueName=q.x&routingKey=r.x"
     Comprobar "Binding sin exchange responde 400" ($v5.Status -eq 400) "status=$($v5.Status)"
     Comprobar "El 400 del binding nombra exchangeName" ($v5.Json.parametro -eq "exchangeName") `
-        "parametro=$($v5.Json.parametro)"
+        "parametro=$($v5.Json.parametro) cuerpo=$($v5.Texto)"
 
     $v6 = Invoke-Api POST "$urlAdmin/api/rabbitmq/bindings?queueName=q.x&exchangeName=cmd.direct"
     Comprobar "Binding sin routing key responde 400" ($v6.Status -eq 400) "status=$($v6.Status)"
@@ -531,9 +538,22 @@ try {
     Write-Host ""
     Write-Host "=== El flujo de EP1 no se rompio ===" -ForegroundColor Cyan
 
-    $sinStock = Crear-Pedido "cliente@duoc.cl" $producto.id 999999
-    Comprobar "Pedir mas stock del disponible sigue devolviendo 409" ($sinStock.Status -eq 409) `
-        "status=$($sinStock.Status)"
+    # Son dos casos distintos, igual que en verificar-local.ps1 de EP1: una
+    # cantidad valida pero mayor al stock es un conflicto de negocio (409), y una
+    # por encima del tope por linea (@Max 999) es una entrada invalida (400) que
+    # se rechaza antes de mirar el stock.
+    $stockActual = [int](Invoke-Api GET "$urlCat/api/catalog/$($producto.id)").Json.stock
+    if ($stockActual -lt 999) {
+        $sinStock = Crear-Pedido "cliente@duoc.cl" $producto.id ($stockActual + 1)
+        Comprobar "Pedir mas stock del disponible sigue devolviendo 409" ($sinStock.Status -eq 409) `
+            "status=$($sinStock.Status) cantidad=$($stockActual + 1) stock=$stockActual"
+    } else {
+        Write-Host "  (se omite el 409 por stock: SKU-001 tiene $stockActual unidades, mas que el tope por linea)" -ForegroundColor DarkGray
+    }
+
+    $sobreTope = Crear-Pedido "cliente@duoc.cl" $producto.id 99999
+    Comprobar "Una cantidad sobre el tope por linea sigue devolviendo 400" ($sobreTope.Status -eq 400) `
+        "status=$($sobreTope.Status)"
 
     $pedidoMal = Crear-Pedido "cliente@duoc.cl" $producto.id 1
     $malaTransicion = Invoke-Api PUT "$urlPed/api/orders/$($pedidoMal.Json.id)/ship"
