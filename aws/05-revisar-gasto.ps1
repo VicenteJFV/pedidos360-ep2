@@ -171,5 +171,9 @@ Write-Host ""
 Write-Host "=== Que hacer con esto ===" -ForegroundColor Cyan
 Write-Host "  Todo lo que salga en ROJO esta cobrando ahora mismo." -ForegroundColor DarkGray
 Write-Host "  Para EP2 la base de AWS ya no se necesita: va en Oracle Cloud." -ForegroundColor DarkGray
-Write-Host "  Eliminarla de verdad (no solo detenerla):  .\06-eliminar-oracle-rds.ps1" -ForegroundColor DarkGray
+Write-Host "  Eliminarla de verdad, no solo detenerla (IRREVERSIBLE):" -ForegroundColor DarkGray
+Write-Host "    aws rds delete-db-instance --db-instance-identifier pedidos360-oracle --skip-final-snapshot --delete-automated-backups --region $Region" -ForegroundColor DarkGray
+Write-Host "  Detenerla no alcanza: a los 7 dias AWS la vuelve a encender sola." -ForegroundColor DarkGray
+Write-Host "  Para ver cuando paso:" -ForegroundColor DarkGray
+Write-Host "    aws rds describe-events --source-type db-instance --source-identifier pedidos360-oracle --duration 20160 --region $Region" -ForegroundColor DarkGray
 Write-Host ""

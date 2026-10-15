@@ -36,13 +36,13 @@ java -jar ms-pedidos360-notify/target/ms-pedidos360-notify.jar
 java -jar ms-pedidos360-rabbitadmin/target/ms-pedidos360-rabbitadmin.jar
 ```
 
-**Dejá las terminales de `orders` y de `notify` a la vista**: son la evidencia de las pruebas 1 y 2.
+**Deja las terminales de `orders` y de `notify` a la vista**: son la evidencia de las pruebas 1 y 2.
 
 **3. Management abierto** en http://localhost:15672 (`guest`/`guest`), en la pestaña **Queues**.
 
 **4. Postman** con la colección `Pedidos360-EP2` y su environment cargados.
 
-**5. Purgá las DLQ** para que la prueba 2 muestre un mensaje nuevo y no uno viejo:
+**5. Purga las DLQ** para que la prueba 2 muestre un mensaje nuevo y no uno viejo:
 
 ```powershell
 cd C:\dev\pedidos360-ep2\pruebas
@@ -51,7 +51,7 @@ foreach ($c in "q.cmd.email.dlq","q.cmd.kitchen.dlq","q.cmd.invoice.dlq") {
 }
 ```
 
-**Ensayo completo automatizado**, si querés comprobar que todo responde antes de presentar:
+**Ensayo completo automatizado**, si quieres comprobar que todo responde antes de presentar:
 
 ```powershell
 cd C:\dev\pedidos360-ep2\pruebas ; .\verificar-ep2.ps1
@@ -171,7 +171,7 @@ En Management, **Queues** → `q.cmd.email.dlq` con **Ready ≥ 1**. Abrirla, **
 
 > «El mismo mensaje que el consumidor rechazó está acá, íntegro, para que alguien lo revise.»
 
-### Si querés mostrar también el reintento con backoff
+### Si quieres mostrar también el reintento con backoff
 
 Mismo flujo con `error-transitorio@pedidos360.cl`. Tarda unos 7 segundos y el log muestra:
 
@@ -241,7 +241,7 @@ DELETE http://127.0.0.1:8084/api/rabbitmq/queues/q.test.pedidos360
 
 **«¿Dónde está la publicación en el código?»** `PedidoService.aceptar()`, al final del método —después de que la transición y el descuento de stock ya tuvieron éxito. Si el catálogo rechaza por stock, la excepción propaga antes y no se publica nada: nunca se le avisa a un cliente de un pedido que en realidad no se aceptó.
 
-**«¿Por qué no usás el retry de Spring por propiedades?»** Porque es incompatible con la confirmación manual. Al agotar los reintentos, el recoverer lanza `AmqpRejectAndDontRequeueException`, pero el contenedor la envuelve en `ListenerExecutionFailedException` y en modo manual ya no la reconoce como rechazo: el mensaje queda colgado en `Unacked` y con `prefetch=1` detiene la cola entera. Lo probamos contra el clúster —`Unacked=1`, `Ready=1`, DLQ vacía indefinidamente— y por eso el reintento lo hace `EjecutorDeConsumo`, con los mismos valores de las guías.
+**«¿Por qué no usas el retry de Spring por propiedades?»** Porque es incompatible con la confirmación manual. Al agotar los reintentos, el recoverer lanza `AmqpRejectAndDontRequeueException`, pero el contenedor la envuelve en `ListenerExecutionFailedException` y en modo manual ya no la reconoce como rechazo: el mensaje queda colgado en `Unacked` y con `prefetch=1` detiene la cola entera. Lo probamos contra el clúster —`Unacked=1`, `Ready=1`, DLQ vacía indefinidamente— y por eso el reintento lo hace `EjecutorDeConsumo`, con los mismos valores de las guías.
 
 **«¿Por qué las DLQ no tienen `x-dead-letter-exchange`?»** Porque un mensaje que ya falló no debe poder reencolarse otra vez: se formaría un ciclo. Sí tienen TTL, más largo que el de la cola principal (24 h contra 10 min), porque un mensaje muerto tiene que sobrevivir lo suficiente para que alguien lo revise.
 
