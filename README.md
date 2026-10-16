@@ -160,23 +160,32 @@ El catálogo primero, porque pedidos lo consulta al crear un pedido. `notify` co
 
 ## Despliegue de EP2 en la EC2
 
-La guía exige que la prueba empírica se haga sobre la solución desplegada. En la EC2 corre un solo Compose, [`despliegue/docker-compose.yml`](despliegue/docker-compose.yml), con el clúster de dos nodos y los cuatro microservicios, contra Oracle Autonomous Database.
+La guía exige que *«el Frontend Angular, BFF y microservicios deberán estar desplegados en EC2»* con Docker Compose, y que la prueba empírica se haga sobre la solución desplegada. En la EC2 corre un solo Compose, [`despliegue/docker-compose.yml`](despliegue/docker-compose.yml), con toda la solución; la base está en Oracle Cloud.
 
 ```powershell
 cd C:\dev\pedidos360-ep2\aws ; .\07-desplegar-ep2.ps1
 ```
 
+| Servicio | En la EC2 | Acceso |
+| :--- | :--- | :--- |
+| Frontend Angular (nginx) | `:80` | **https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/** |
+| BFF | `:8080` | por el API Gateway, rutas `/api/...` con JWT |
+| RabbitMQ Management | `:15672` y `:15673` | **http://32.194.66.142:15672**, con login |
+| `orders`, `catalog`, `notify`, `rabbitadmin` | `127.0.0.1` | solo desde la EC2 o por túnel SSH |
+
 | Decisión | Por qué |
 | :--- | :--- |
-| Todo lo de EP2 publicado en `127.0.0.1` | El Security Group sigue abriendo solo el 8080 del BFF y el 22. Management y la API administradora no quedan expuestos a Internet |
-| Acceso por túnel SSH (`08-tunel-demo.ps1`) | Trae los servicios a los mismos puertos del portátil: Postman y el guion de la demo no cambian |
-| El BFF de EP1 sigue en systemd | Pedidos y catálogo se publican en `127.0.0.1:8081` y `:8082`, donde el BFF ya los buscaba; para él nada cambió |
-| Sin `guest/guest` en el broker | Usuario y cookie del clúster se generan en la EC2 la primera vez y no están en git |
-| Contraseña de Oracle por la entrada estándar de SSH | No aparece en la línea de comandos, que cualquier proceso del host puede ver, ni en un archivo del portátil |
-| Instalación desacoplada con `nohup` | En algunas redes una conexión SSH sin tráfico se corta en silencio; la instalación no puede depender de que la sesión sobreviva |
-| Catálogo y pedidos se detienen ante `ORA-01017` | Con `restart: unless-stopped`, una contraseña equivocada produce cientos de logins fallidos en minutos y bloquea ADMIN. Con la protección: un intento por servicio |
+| El frontend se entra por el API Gateway (`/app/`) | Entra ID no acepta direcciones de retorno `http://` fuera de `localhost`, y MSAL necesita HTTPS para PKCE. El Gateway da HTTPS con certificado válido, comparte origen con `/api/...` y sigue siendo el **único punto de entrada**, como en EP1 |
+| **CORS en el API Gateway**, no en el código | Lo pidió el profesor en la evaluación de EP1. El Gateway responde el preflight y agrega las cabeceras; se eliminaron las rutas `OPTIONS` que EP1 reenviaba al BFF. Ver [`02-desplegar-api-gateway.ps1`](aws/02-desplegar-api-gateway.ps1) |
+| Management publicado como en las guías (`"15672:15672"`) | Protegido por su login. No existe `guest/guest`: usuario y cookie del clúster se generan en la EC2 y no están en git |
+| La EC2 compila; se sube el código, no los JAR | El paquete pesa unos 170 KB en lugar de 144 MB. Las dependencias las baja la EC2 por la red de AWS |
+| Contraseña de Oracle por la entrada estándar de SSH | No aparece en la línea de comandos ni en un archivo del portátil |
+| Instalación desacoplada con `nohup` | Si la red corta la sesión SSH, la instalación sigue |
+| Catálogo y pedidos se detienen ante `ORA-01017` | Con `restart: unless-stopped`, una contraseña equivocada produce cientos de logins fallidos y bloquea ADMIN. Con la protección: un intento por servicio |
 
-Cómo se probó: se desplegó con un usuario de Oracle **inexistente** a propósito, para no arriesgar la cuenta ADMIN. Resultado: clúster con los dos nodos en *Running Nodes*, solo el usuario `pedidos360` en el broker, las tres colas con su consumidor, `notify` y `rabbitadmin` respondiendo, y `ORA-01017` desde el contenedor, lo que prueba que el wallet y el mTLS funcionan desde la EC2.
+Verificado: los seis servicios responden; los contenedores vuelven solos cuando el lab reinicia la EC2; desde fuera, el frontend carga por HTTPS, la API sin token da 401 (con su cabecera CORS), Management pide login y `rabbitadmin` no es alcanzable.
+
+**Pendiente fuera del código:** registrar `https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/` como dirección de retorno (plataforma SPA) en la app de Entra ID del frontend. Hasta entonces el login funciona desde `localhost:4200`, pero no desde el frontend desplegado.
 
 ## API del microservicio administrador
 

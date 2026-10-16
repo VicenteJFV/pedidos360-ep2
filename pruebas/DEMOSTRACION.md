@@ -13,41 +13,46 @@ El disparador es **el correo del cliente del pedido**. Nada más. Se crea el ped
 
 ## Antes de empezar — sobre la EC2 (lo que pide la guía)
 
-La guía dice que la prueba *«debe ejecutarse sobre la solución desplegada y funcionando»*. En la EC2 todo lo de EP2 escucha solo en `127.0.0.1`, así que se usa por un túnel SSH que lo trae a los **mismos puertos** de tu portátil: el resto de este guion, Postman y los comandos funcionan igual que en local.
+La guía dice que la prueba *«debe ejecutarse sobre la solución desplegada y funcionando»*. Todo corre en la EC2 —frontend, BFF, los cuatro microservicios y el clúster— con Docker Compose, y la base en Oracle Cloud.
 
-**1. Inicia el lab** y carga las credenciales:
+| Qué | Dónde | Cómo se entra |
+| :--- | :--- | :--- |
+| Aplicación (frontend) | https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/ | navegador, login con Entra ID |
+| RabbitMQ Management | http://32.194.66.142:15672 (nodo 2: `:15673`) | navegador, usuario `pedidos360` |
+| Logs de `orders` y `notify` | terminal de la EC2 | `08-tunel-demo.ps1 -Logs` |
+| API administradora (Postman) | `127.0.0.1:8084` de la EC2 | túnel: `08-tunel-demo.ps1` |
+
+**1. Inicia el lab.** La EC2 arranca sola y los contenedores vuelven solos (comprobado tras un reinicio del lab). No hace falta volver a desplegar.
+
+**2. Carga las credenciales**, solo si vas a usar los scripts (logs o túnel), porque tu IP puede haber cambiado:
 
 ```powershell
 cd C:\dev\pedidos360-ep2\aws ; .\01-credenciales-learner-lab.ps1 -DesdePortapapeles
 ```
 
-**2. Comprueba el despliegue.** Al iniciar el lab la EC2 arranca sola y los contenedores vuelven solos. Si cambiaste código, o si tu IP cambió y SSH no entra, vuelve a desplegar; es idempotente:
-
 ```powershell
 .\07-desplegar-ep2.ps1
 ```
 
-**3. Detén lo local** que ocupe los puertos, si estaba corriendo:
+`07` autoriza tu IP actual para SSH y vuelve a desplegar sin cambiar nada; es idempotente.
 
-```powershell
-cd C:\dev\pedidos360-ep2\rabbitmq-cluster ; docker compose stop
-```
+**3. Contraseña de Management.** El usuario es `pedidos360`; la contraseña la muestra `.\08-tunel-demo.ps1` al abrirse. En la EC2 **no** existe `guest`/`guest`.
 
-**4. Ventana 1, el túnel.** Muestra el usuario y la contraseña de Management. En la EC2 **no** es `guest`/`guest`:
-
-```powershell
-cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1
-```
-
-**5. Ventana 2, los logs** de `orders` (productor) y `notify` (consumidor). Esta es la terminal que pide la guía en los pasos 3 y 4:
+**4. Ventana de logs** de `orders` (productor) y `notify` (consumidor). Es la terminal que pide la guía en los pasos 3 y 4:
 
 ```powershell
 cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1 -Logs
 ```
 
-**6. Management** en http://localhost:15672 con las credenciales del paso 4, en la pestaña **Queues**.
+**5. Para la prueba 3 (Postman)**, deja abierto el túnel en otra ventana; la colección apunta a `127.0.0.1:8084`:
 
-Después haz los pasos **4 (Postman)** y **5 (purgar las DLQ)** de la sección local, que funcionan igual por el túnel, y sigue en **Prueba 1** más abajo. Los pasos 1 a 3 de la sección local no aplican: el clúster y los servicios ya están en la EC2.
+```powershell
+cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1
+```
+
+**6. La operación de las pruebas 1 y 2** puede ejecutarse **desde la aplicación**, como sugiere la guía: en el panel de administración, con el usuario Admin, el botón **Avanzar Estado** sobre un pedido `CREADO` llama a `accept`, que es la operación que publica el mensaje. El frontend no crea pedidos: créalos antes con el comando de PowerShell de la prueba 1 (por el túnel) y acéptalos desde la aplicación. Para la prueba 2, crea el pedido con el correo `error-permanente@pedidos360.cl`.
+
+Después haz el paso **5 (purgar las DLQ)** de la sección local y sigue en **Prueba 1**.
 
 > **Antes de la presentación**, confirma en la consola de OCI que la base `pedidos360` esté **Available**. Las bases Always Free se detienen solas tras 7 días sin uso, y si está detenida, catálogo y pedidos no arrancan.
 
