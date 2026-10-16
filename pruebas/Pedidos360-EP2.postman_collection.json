@@ -1548,5 +1548,24 @@
         "type": "string"
       }
     ]
-  }
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// token-vigente: corre despues de cada peticion. Los tokens de Entra ID duran",
+          "// entre 60 y 90 minutos; si vence a mitad de una corrida, las peticiones",
+          "// siguientes reciben 401 y sin este aviso no queda claro por que.",
+          "if (pm.response.code === 401) {",
+          "    const motivo = pm.response.headers.get('www-authenticate') || '';",
+          "    pm.test('El token sigue vigente', () => {",
+          "        pm.expect(motivo, 'Token vencido o ausente: corre obtener-token.ps1 -Cuenta y pega el nuevo en la variable token').to.not.match(/expired|invalid_token/i);",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ]
 }
