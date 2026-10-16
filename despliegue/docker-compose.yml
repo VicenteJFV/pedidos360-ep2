@@ -1,15 +1,23 @@
-# Despliegue de EP2 en la EC2: cluster RabbitMQ de dos nodos y los cuatro
-# microservicios, en una sola red de Docker.
+# Despliegue de EP2 en la EC2: toda la solucion en una sola red de Docker, como
+# exige la guia -"El Frontend Angular, BFF y microservicios deberan estar
+# desplegados en EC2" con Docker Compose-:
 #
-# El BFF de EP1 sigue fuera de este archivo, como servicio systemd del host.
-# Llama a pedidos y catalogo en 127.0.0.1:8081 y 127.0.0.1:8082, que es donde
-# este Compose los publica: para el BFF nada cambio.
+#   frontend     Angular servido por nginx               :80    publico
+#   bff          BFF de EP1, ahora en contenedor          :8080  publico
+#   orders, catalog, notify, rabbitadmin                  127.0.0.1 solamente
+#   rabbitmq-1, rabbitmq-2  cluster de dos nodos          Management publico
 #
-# TODOS los puertos se publican atados a 127.0.0.1. Nada de lo que agrega EP2
-# queda alcanzable desde Internet: el Security Group sigue abriendo solo el
-# 8080 del BFF y el 22 de SSH. RabbitMQ Management, la API administradora y los
-# microservicios se usan desde el portatil por un tunel SSH
-# (aws/08-tunel-demo.ps1).
+# Que es publico y por que:
+#
+#   80 y 8080   El navegador no entra directo: pasa por el API Gateway, que
+#               reenvia /app/... al frontend y /api/... al BFF. El API Gateway
+#               los alcanza desde Internet, asi que el Security Group los abre.
+#               El API Gateway aporta el HTTPS que Entra ID exige.
+#   15672/3     RabbitMQ Management, publicado como en las guias del curso
+#               ("15672:15672" y "15673:15672"). Lo protege su propio login,
+#               con un usuario generado al desplegar: no existe guest/guest.
+#   el resto    Microservicios y API administradora solo en 127.0.0.1 de la
+#               EC2. Se usan por tunel SSH (aws/08-tunel-demo.ps1).
 #
 # Archivos que este Compose espera y que NO estan en git, porque los genera
 # aws/07-desplegar-ep2.ps1 directamente en la EC2:
@@ -69,7 +77,8 @@ services:
       - ./rabbitmq-usuario.conf:/etc/rabbitmq/conf.d/20-usuario.conf:ro
       - rabbitmq1_data:/var/lib/rabbitmq
     ports:
-      - "127.0.0.1:15672:15672"
+      # Como en las guias: en todas las interfaces. Ver el encabezado.
+      - "15672:15672"
 
   rabbitmq-2:
     <<: *rabbitmq-comun
@@ -80,7 +89,7 @@ services:
       - ./rabbitmq-usuario.conf:/etc/rabbitmq/conf.d/20-usuario.conf:ro
       - rabbitmq2_data:/var/lib/rabbitmq
     ports:
-      - "127.0.0.1:15673:15672"
+      - "15673:15672"
 
   catalog:
     <<: *microservicio
@@ -133,6 +142,38 @@ services:
       - "127.0.0.1:8084:8084"
     depends_on:
       rabbitmq-1: { condition: service_healthy }
+
+  bff:
+    image: pedidos360/bff:ep2
+    container_name: bff-pedidos360
+    restart: unless-stopped
+    networks: [pedidos360]
+    environment:
+      # Dentro de la red de Docker pedidos y catalogo se llaman por su nombre de
+      # servicio. En EP1 eran 127.0.0.1 porque todo corria en el host.
+      MICROSERVICIOS_ORDERS_BASEURL: http://orders:8081
+      MICROSERVICIOS_CATALOG_BASEURL: http://catalog:8082
+      # El frontend desplegado se sirve desde el dominio del API Gateway, y el
+      # BFF ve ese dominio como Origin: sin agregarlo, rechaza POST y PUT.
+      BFF_CORS_ORIGENESPERMITIDOS: http://localhost:4200,https://xpglku1pj5.execute-api.us-east-1.amazonaws.com
+      JAVA_OPTS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC
+    ports:
+      # Publico: es el destino del API Gateway, que lo alcanza desde Internet.
+      # Era asi tambien en EP1.
+      - "8080:8080"
+    depends_on:
+      orders: { condition: service_started }
+      catalog: { condition: service_started }
+
+  frontend:
+    image: pedidos360/frontend:ep2
+    container_name: frontend-pedidos360
+    restart: unless-stopped
+    networks: [pedidos360]
+    ports:
+      # Publico, por la misma razon que el BFF: el API Gateway reenvia aqui las
+      # peticiones a /app/... y es quien da el HTTPS.
+      - "80:80"
 
 networks:
   pedidos360:

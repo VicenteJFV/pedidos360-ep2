@@ -49,16 +49,16 @@ docker compose version
 # ---------------------------------------------------------------------------
 paso "Servicios de EP1"
 # ---------------------------------------------------------------------------
-# Catalogo y pedidos pasan a contenedores. Si siguieran como servicios systemd
-# ocuparian los puertos 8081 y 8082 y los contenedores no podrian publicarse.
-# El BFF no se toca: sigue en systemd, de la misma forma que en EP1.
-for unidad in ms-catalog ms-orders; do
+# Catalogo, pedidos y el BFF pasan a contenedores, como exige la guia. Si
+# siguieran como servicios systemd ocuparian los puertos 8081, 8082 y 8080 y
+# los contenedores no podrian publicarse. Se deshabilitan, no se borran: si
+# hiciera falta volver a EP1, basta con systemctl enable --now.
+for unidad in ms-catalog ms-orders bff; do
     if systemctl list-unit-files "$unidad.service" >/dev/null 2>&1; then
         systemctl disable --now "$unidad" >/dev/null 2>&1 || true
         echo "  $unidad detenido y deshabilitado"
     fi
 done
-echo "  bff: $(systemctl is-active bff 2>/dev/null || echo 'no existe')"
 
 # ---------------------------------------------------------------------------
 paso "Credenciales"
@@ -107,15 +107,21 @@ chmod 700 "$RAIZ/wallet"
 chmod 600 "$RAIZ/wallet"/*
 
 # ---------------------------------------------------------------------------
-paso "Imagenes de los microservicios"
+paso "Imagenes"
 # ---------------------------------------------------------------------------
-# Maven compila dentro de la imagen. La primera vez descarga las dependencias
-# y tarda unos minutos por servicio; despues las toma del cache de BuildKit.
+# Maven y Node compilan dentro de las imagenes. La primera vez descargan las
+# dependencias y tardan unos minutos cada una; despues las toman del cache de
+# BuildKit.
+construir() {
+    echo "  construyendo pedidos360/$1:ep2..."
+    docker build -q -t "pedidos360/$1:ep2" "$2" >/dev/null
+    echo "  pedidos360/$1:ep2 lista"
+}
 for m in catalog orders notify rabbitadmin; do
-    echo "  construyendo pedidos360/$m:ep2..."
-    docker build -q -t "pedidos360/$m:ep2" "$RAIZ/ms-pedidos360-$m" >/dev/null
-    echo "  pedidos360/$m:ep2 lista"
+    construir "$m" "$RAIZ/ms-pedidos360-$m"
 done
+construir bff "$RAIZ/bff"
+construir frontend "$RAIZ/frontend"
 
 # ---------------------------------------------------------------------------
 paso "Contenedores"
@@ -155,8 +161,24 @@ docker exec rabbitmq-1 rabbitmqctl cluster_status 2>/dev/null |
     awk '/^Running Nodes/{f=1;next} /^[A-Z]/{f=0} f && /^rabbit@/{print "    " $0}'
 
 # ---------------------------------------------------------------------------
-paso "Salud de los microservicios"
+paso "Salud de los servicios"
 # ---------------------------------------------------------------------------
+# Que cuenta como "responde" depende del servicio:
+#   microservicios  /actuator/health en 200
+#   bff             401 en /api/catalog: esta vivo y exige el JWT, que es
+#                   justo lo correcto. No tiene actuator.
+#   frontend        200 en /app/, sirviendo el index.html con su base href
+responde() {
+    case "$1" in
+        bff)
+            [ "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:8080/api/catalog)" = "401" ] ;;
+        frontend)
+            curl -fs -m 5 http://127.0.0.1/app/ | grep '<base href="/Desarrollo/app/">' >/dev/null ;;
+        *)
+            curl -fs -m 5 "http://127.0.0.1:$1/actuator/health" >/dev/null ;;
+    esac
+}
+
 # Pedidos y catalogo tardan mas: en el primer arranque Hibernate crea las tablas
 # en Oracle Cloud, y la base esta en Santiago.
 #
@@ -166,7 +188,7 @@ paso "Salud de los microservicios"
 # usuario inexistente, que acumulo 75 intentos en minutos. Por eso, apenas
 # aparece ORA-01017 se detienen los dos, en vez de esperar a que agoten el
 # tiempo de espera.
-pendientes="8082 8081 8083 8084"
+pendientes="8082 8081 8083 8084 bff frontend"
 for _ in $(seq 1 60); do
     for c in ms-pedidos360-catalog ms-pedidos360-orders; do
         # Sin -q: grep -q corta la tuberia al primer hallazgo, docker logs recibe
@@ -182,20 +204,22 @@ for _ in $(seq 1 60); do
         fi
     done
     siguen=""
-    for puerto in $pendientes; do
-        curl -fs "http://127.0.0.1:$puerto/actuator/health" >/dev/null || siguen="$siguen $puerto"
+    for servicio in $pendientes; do
+        responde "$servicio" || siguen="$siguen $servicio"
     done
     pendientes=$siguen
     [ -z "$pendientes" ] && break
     sleep 5
 done
 
-for par in 8082:catalog 8081:orders 8083:notify 8084:rabbitadmin; do
-    puerto=${par%%:*}; nombre=${par##*:}
-    if curl -fs "http://127.0.0.1:$puerto/actuator/health" >/dev/null; then
-        echo "  [OK]    $nombre ($puerto)"
+for par in 8082:catalog:ms-pedidos360-catalog 8081:orders:ms-pedidos360-orders \
+           8083:notify:ms-pedidos360-notify 8084:rabbitadmin:ms-pedidos360-rabbitadmin \
+           bff:bff:bff-pedidos360 frontend:frontend:frontend-pedidos360; do
+    clave=${par%%:*}; resto=${par#*:}; nombre=${resto%%:*}; contenedor=${resto##*:}
+    if responde "$clave"; then
+        echo "  [OK]    $nombre"
     else
-        echo "  [FALLA] $nombre ($puerto): docker logs ms-pedidos360-$nombre"
+        echo "  [FALLA] $nombre: docker logs $contenedor"
     fi
 done
 

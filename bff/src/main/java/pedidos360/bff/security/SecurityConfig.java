@@ -1,5 +1,6 @@
 package pedidos360.bff.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -41,10 +42,21 @@ public class SecurityConfig {
         return converter;
     }
 
+    /**
+     * Origenes permitidos, configurables. En desarrollo es el Angular local; en la
+     * EC2 se agrega el dominio del API Gateway, desde donde se sirve el frontend
+     * desplegado.
+     *
+     * Aunque en el navegador frontend y API compartan origen, al BFF la peticion
+     * le llega con Host = la EC2 y Origin = el API Gateway. Spring los ve
+     * distintos, la trata como CORS y, sin el origen en esta lista, rechaza con
+     * 403 los POST y PUT, que son justo los que el navegador envia con Origin.
+     */
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${bff.cors.origenes-permitidos:http://localhost:4200}") List<String> origenes) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:4200"));
+        config.setAllowedOrigins(origenes);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setMaxAge(3600L);

@@ -154,6 +154,33 @@ foreach ($cidr in $actuales | Where-Object { $_ -ne "$miIp/32" }) {
 }
 Write-Host "  puerto 22 abierto solo a $miIp" -ForegroundColor Green
 
+# ---------------------------------------------------------------------------
+Paso "Puertos publicos"
+# ---------------------------------------------------------------------------
+# 80 y 8080 los alcanza el API Gateway, que llama desde Internet: por ahi pasan
+# el frontend (/app/...) y el BFF (/api/...). 15672 y 15673 son RabbitMQ
+# Management, abierto como en las guias del curso y protegido por su login.
+
+$publicos = @(
+    @{ Desde = 80;    Hasta = 80;    Para = "frontend (destino del API Gateway)" },
+    @{ Desde = 8080;  Hasta = 8080;  Para = "BFF (destino del API Gateway)" },
+    @{ Desde = 15672; Hasta = 15673; Para = "RabbitMQ Management, nodos 1 y 2" }
+)
+$reglasSg = (Invoke-Aws @("ec2", "describe-security-groups", "--group-ids", $sg)).SecurityGroups[0].IpPermissions
+foreach ($p in $publicos) {
+    $existe = $reglasSg | Where-Object {
+        $_.FromPort -eq $p.Desde -and $_.ToPort -eq $p.Hasta -and
+        (@($_.IpRanges | ForEach-Object { $_.CidrIp }) -contains "0.0.0.0/0")
+    }
+    if (-not $existe) {
+        $permiso = "IpProtocol=tcp,FromPort=$($p.Desde),ToPort=$($p.Hasta),IpRanges=[{CidrIp=0.0.0.0/0}]"
+        Invoke-Aws @("ec2", "authorize-security-group-ingress", "--group-id", $sg,
+                     "--ip-permissions", $permiso) | Out-Null
+    }
+    $rango = if ($p.Desde -eq $p.Hasta) { "$($p.Desde)" } else { "$($p.Desde)-$($p.Hasta)" }
+    Write-Host ("  {0,-11} {1}" -f $rango, $p.Para) -ForegroundColor Green
+}
+
 $listo = $false
 for ($i = 0; $i -lt 18; $i++) {
     Invoke-Nativo "ssh" ($opcionesSsh + @("ec2-user@$ip", "true")) | Out-Null
@@ -206,6 +233,10 @@ try {
         "rabbitmq-cluster\rabbitmq-2\rabbitmq.conf"
     )
     foreach ($m in $modulos) { $archivos += @("$m\Dockerfile", "$m\pom.xml") }
+    $archivos += @("bff\Dockerfile", "bff\pom.xml")
+    $archivos += @("frontend\Dockerfile", "frontend\nginx.conf", "frontend\package.json",
+                   "frontend\package-lock.json", "frontend\angular.json",
+                   "frontend\tsconfig.json", "frontend\tsconfig.app.json")
 
     foreach ($rel in $archivos) {
         $origen = Join-Path $RaizProyecto $rel
@@ -225,12 +256,17 @@ try {
 
     # El codigo de produccion, sin las pruebas ni target/: es lo unico que
     # necesita la etapa de compilacion del Dockerfile.
-    foreach ($m in $modulos) {
-        $fuente = Join-Path $RaizProyecto "$m\src\main"
+    $carpetasFuente = @($modulos | ForEach-Object { "$_\src\main" }) +
+                      @("bff\src\main", "frontend\src", "frontend\public")
+    foreach ($rel in $carpetasFuente) {
+        $fuente = Join-Path $RaizProyecto $rel
         if (-not (Test-Path $fuente)) { throw "Falta $fuente" }
-        New-Item -ItemType Directory -Force -Path (Join-Path $staging "$m\src") | Out-Null
-        Copy-Item $fuente (Join-Path $staging "$m\src\main") -Recurse
+        $destino = Join-Path $staging $rel
+        New-Item -ItemType Directory -Force -Path (Split-Path $destino) | Out-Null
+        Copy-Item $fuente $destino -Recurse
     }
+    # node_modules y dist NO viajan: los genera la imagen en la EC2. Son cientos
+    # de MB que con una subida lenta tardarian decenas de minutos.
 
     Copy-Item $wallet (Join-Path $staging "wallet") -Recurse
 
@@ -250,7 +286,7 @@ try {
     # Se reemplaza el codigo y el wallet, pero NO despliegue/.env: ahi estan la
     # cookie del cluster y la contrasena de RabbitMQ, que deben sobrevivir.
     $extraer = "sudo mkdir -p $destinoRemoto && " +
-               "sudo rm -rf $destinoRemoto/wallet $destinoRemoto/ms-pedidos360-* && " +
+               "sudo rm -rf $destinoRemoto/wallet $destinoRemoto/ms-pedidos360-* $destinoRemoto/bff $destinoRemoto/frontend && " +
                "sudo tar -xzf /tmp/pedidos360-ep2.tgz -C $destinoRemoto && " +
                "rm -f /tmp/pedidos360-ep2.tgz"
     Invoke-Nativo "ssh" ($opcionesSsh + @("ec2-user@$ip", $extraer)) | Out-Null
@@ -331,10 +367,48 @@ if ($codigoInstalacion -ne 0) {
     exit 1
 }
 
+# ---------------------------------------------------------------------------
+Paso "Rutas del frontend en el API Gateway"
+# ---------------------------------------------------------------------------
+# El frontend corre en la EC2, pero se entra por el API Gateway en /app/. Asi
+# tiene HTTPS con certificado valido -Entra ID no acepta otra cosa fuera de
+# localhost- y comparte origen con /api/..., sin CORS en el navegador. Las rutas
+# son publicas: un frontend es HTML y JS que cualquiera puede descargar; lo que
+# exige token son las rutas /api/....
+
+$api = (Invoke-Aws @("apigatewayv2", "get-apis")).Items | Where-Object { $_.Name -eq "API_Gateway_Entrega1" } | Select-Object -First 1
+if (-not $api) { throw "No encuentro el API Gateway API_Gateway_Entrega1." }
+$rutasGateway = (Invoke-Aws @("apigatewayv2", "get-routes", "--api-id", $api.ApiId, "--max-results", "500")).Items
+
+$rutasFrontend = @(
+    @{ Clave = "GET /app";          Destino = "http://$ip/app/" },
+    @{ Clave = "GET /app/{proxy+}"; Destino = "http://$ip/app/{proxy}" }
+)
+foreach ($r in $rutasFrontend) {
+    if ($rutasGateway | Where-Object { $_.RouteKey -eq $r.Clave }) {
+        Write-Host ("  {0,-20} ya existia" -f $r.Clave) -ForegroundColor DarkGray
+        continue
+    }
+    $integracion = Invoke-Aws @("apigatewayv2", "create-integration", "--api-id", $api.ApiId,
+        "--integration-type", "HTTP_PROXY", "--integration-method", "GET",
+        "--integration-uri", $r.Destino, "--payload-format-version", "1.0")
+    if (-not $integracion) { throw "No se pudo crear la integracion de $($r.Clave)." }
+    Invoke-Aws @("apigatewayv2", "create-route", "--api-id", $api.ApiId,
+        "--route-key", $r.Clave, "--authorization-type", "NONE",
+        "--target", "integrations/$($integracion.IntegrationId)") | Out-Null
+    Write-Host ("  {0,-20} -> {1}" -f $r.Clave, $r.Destino) -ForegroundColor Green
+}
+
+$urlFrontend = "$($api.ApiEndpoint)/Desarrollo/app/"
+
+Write-Host ""
 Write-Host "DESPLIEGUE COMPLETO" -ForegroundColor Green
 Write-Host ""
-Write-Host "Para la demostracion, abre el tunel:" -ForegroundColor Cyan
-Write-Host "  .\08-tunel-demo.ps1" -ForegroundColor Cyan
-Write-Host "Y en otra terminal, los logs de productor y consumidor:" -ForegroundColor Cyan
+Write-Host "  Frontend:             $urlFrontend" -ForegroundColor Cyan
+Write-Host "  RabbitMQ Management:  http://${ip}:15672  (nodo 2: :15673)" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Logs de productor y consumidor (terminal de la EC2):" -ForegroundColor Cyan
 Write-Host "  .\08-tunel-demo.ps1 -Logs" -ForegroundColor Cyan
+Write-Host "Postman contra la API administradora (127.0.0.1:8084), por tunel:" -ForegroundColor Cyan
+Write-Host "  .\08-tunel-demo.ps1" -ForegroundColor Cyan
 Write-Host ""
