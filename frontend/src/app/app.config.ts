@@ -31,7 +31,15 @@ export function MSALGuardConfigFactory(): MsalGuardConfiguration {
 
 export function MSALInterceptorConfigFactory(): MsalInterceptorConfiguration {
   const protectedResourceMap = new Map<string, Array<string>>();
-  protectedResourceMap.set(environment.azure.api.url, [environment.azure.api.scope]);
+
+  // El comodin es obligatorio desde msal-angular v6: 'strictMatching' viene
+  // activado por defecto y compara la ruta como patron anclado, asi que la URL
+  // base '/Desarrollo' ya NO cubre '/Desarrollo/api/catalog'. Sin el '/*' el
+  // interceptor no encuentra scopes, deja pasar la peticion sin 'Authorization',
+  // el JWT Authorizer responde 401 sin cabeceras CORS y el navegador lo reporta
+  // como un error de CORS que oculta la causa.
+  protectedResourceMap.set(`${environment.azure.api.url}/*`, [environment.azure.api.scope]);
+
   return { interactionType: InteractionType.Redirect, protectedResourceMap };
 }
 

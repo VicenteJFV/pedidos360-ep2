@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { MsalService, MsalBroadcastService } from '@azure/msal-angular';
 import { InteractionStatus } from '@azure/msal-browser';
 import { environment } from '../../environments/environment';
@@ -10,8 +10,10 @@ export class AuthService {
   private msalService = inject(MsalService);
   private msalBroadcastService = inject(MsalBroadcastService);
   
-  private currentToken: string | null = null; 
-  private currentRole: string | null = null;
+  private currentToken: string | null = null;
+  // Senal, no propiedad simple: la aplicacion es zoneless y sin esto la barra
+  // de navegacion se queda en "Cargando..." aunque el rol ya se conozca.
+  private currentRole = signal<string | null>(null);
 
   constructor() {
     this.msalBroadcastService.inProgress$.subscribe((status) => {
@@ -55,7 +57,7 @@ export class AuthService {
   }
 
   getRole(): string | null {
-    return this.currentRole;
+    return this.currentRole();
   }
   
   async obtenerAccessToken(): Promise<void> {
@@ -80,13 +82,11 @@ export class AuthService {
       }
       const payload = JSON.parse(atob(partes[1].replace(/-/g, '+').replace(/_/g, '/')));
 
-      setTimeout(() => {
-        if (payload.roles && payload.roles.length > 0) {
-          this.currentRole = payload.roles.includes('Admin') ? 'Admin' : 'Cliente';
-        } else {
-          this.currentRole = 'Cliente';
-        }
-      }, 0);
+      if (payload.roles && payload.roles.length > 0) {
+        this.currentRole.set(payload.roles.includes('Admin') ? 'Admin' : 'Cliente');
+      } else {
+        this.currentRole.set('Cliente');
+      }
 
       console.log('==============================');
       console.log('ACCESS TOKEN PEDIDOS360');

@@ -9,6 +9,16 @@
   }
 }
 
+.error {
+  text-align: center;
+  color: #a80000;
+  background: #fde7e9;
+  border: 1px solid #a80000;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+
 .grid-productos {
   display: flex;
   flex-wrap: wrap;
@@ -31,9 +41,22 @@
     box-shadow: 0 8px 15px rgba(0,0,0,0.1);
   }
 
-  .producto-icono {
-    font-size: 50px;
+  .producto-sku {
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: #999;
+    margin-bottom: 10px;
+  }
+
+  .stock {
+    font-size: 15px;
+    color: #333;
     margin-bottom: 15px;
+
+    strong {
+      font-size: 20px;
+      color: #0078d4;
+    }
   }
 
   h3 {

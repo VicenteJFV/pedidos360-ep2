@@ -1,7 +1,10 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { environment } from '../../../environments/environment'; 
+import { MsalBroadcastService } from '@azure/msal-angular';
+import { InteractionStatus } from '@azure/msal-browser';
+import { filter, take } from 'rxjs/operators';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-admin-dashboard',
@@ -12,11 +15,16 @@ import { environment } from '../../../environments/environment';
 })
 export class AdminDashboard implements OnInit {
   private http = inject(HttpClient);
-  
-  pedidos: any[] = []; 
+  private broadcast = inject(MsalBroadcastService);
+  private cdr = inject(ChangeDetectorRef);
+
+  pedidos: any[] = [];
 
   ngOnInit() {
-    this.cargarPedidos();
+    // Igual que en el catalogo: no pedir nada hasta que MSAL tenga cuenta activa.
+    this.broadcast.inProgress$
+      .pipe(filter((estado) => estado === InteractionStatus.None), take(1))
+      .subscribe(() => this.cargarPedidos());
   }
 
   cargarPedidos() {
@@ -24,6 +32,8 @@ export class AdminDashboard implements OnInit {
       .subscribe({
         next: (data) => {
           this.pedidos = data;
+          // Aplicacion zoneless: sin esto la tabla no se repinta.
+          this.cdr.markForCheck();
           console.log('Pedidos cargados desde AWS:', data);
         },
         error: (err) => {
