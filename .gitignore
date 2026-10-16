@@ -75,3 +75,10 @@ postman/
 pruebas/Pedidos360 - Matriz de seguridad EP1/
 
 pruebas/Pedidos360 EP2 - RabbitMQ/
+
+# ---------------------------------------------------------------------------
+# Despliegue de EP2: los genera aws/07-desplegar-ep2.ps1 directamente en la EC2
+# y contienen credenciales. No deben existir en el repositorio.
+# ---------------------------------------------------------------------------
+despliegue/oracle.env
+despliegue/rabbitmq-usuario.conf

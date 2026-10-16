@@ -16,3 +16,10 @@
 *.p12 binary
 *.jks binary
 *.sso binary
+
+# Lo que se ejecuta o se lee dentro de los contenedores en la EC2 (Linux). Un
+# Dockerfile con CRLF pasa "\r" al final de cada RUN, y un .conf con CRLF puede
+# dejar un "\r" pegado a la contrasena.
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.conf text eol=lf

@@ -1,0 +1,142 @@
+# Despliegue de EP2 en la EC2: cluster RabbitMQ de dos nodos y los cuatro
+# microservicios, en una sola red de Docker.
+#
+# El BFF de EP1 sigue fuera de este archivo, como servicio systemd del host.
+# Llama a pedidos y catalogo en 127.0.0.1:8081 y 127.0.0.1:8082, que es donde
+# este Compose los publica: para el BFF nada cambio.
+#
+# TODOS los puertos se publican atados a 127.0.0.1. Nada de lo que agrega EP2
+# queda alcanzable desde Internet: el Security Group sigue abriendo solo el
+# 8080 del BFF y el 22 de SSH. RabbitMQ Management, la API administradora y los
+# microservicios se usan desde el portatil por un tunel SSH
+# (aws/08-tunel-demo.ps1).
+#
+# Archivos que este Compose espera y que NO estan en git, porque los genera
+# aws/07-desplegar-ep2.ps1 directamente en la EC2:
+#
+#   despliegue/.env              cookie de Erlang del cluster (RABBITMQ_COOKIE)
+#                                y credenciales de RabbitMQ (RABBITMQ_USER/PASS)
+#   despliegue/oracle.env        ORACLE_USER y ORACLE_PASSWORD
+#   despliegue/rabbitmq-usuario.conf   usuario por defecto del broker
+#   wallet/                      wallet de la Autonomous Database
+#
+# Las imagenes de los microservicios se construyen antes con docker build
+# (ver despliegue/instalar-en-ec2.sh) y aqui solo se referencian por nombre.
+
+name: pedidos360
+
+x-rabbitmq-comun: &rabbitmq-comun
+  image: rabbitmq:4.2.9-management
+  restart: unless-stopped
+  environment:
+    # RABBITMQ_ERLANG_COOKIE no sirve en RabbitMQ 4.x: la cookie se fija por los
+    # argumentos de Erlang, del servidor y de rabbitmqctl. Aqui viene de .env y
+    # no de un valor escrito en git, como en el cluster de desarrollo.
+    RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-setcookie ${RABBITMQ_COOKIE:?falta RABBITMQ_COOKIE en despliegue/.env}"
+    RABBITMQ_CTL_ERL_ARGS: "-setcookie ${RABBITMQ_COOKIE}"
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+  networks: [pedidos360]
+
+x-microservicio: &microservicio
+  restart: unless-stopped
+  networks: [pedidos360]
+  environment: &entorno-comun
+    # Escuchar en todas las interfaces DEL CONTENEDOR: si escuchara en su
+    # loopback, la publicacion de puertos no le llegaria. Lo que limita el
+    # acceso es el 127.0.0.1 de la seccion ports, que es el loopback del host.
+    MS_BIND_ADDRESS: 0.0.0.0
+    RABBITMQ_ADDRESSES: rabbitmq-1:5672,rabbitmq-2:5672
+    RABBITMQ_USER: ${RABBITMQ_USER:?falta RABBITMQ_USER en despliegue/.env}
+    RABBITMQ_PASS: ${RABBITMQ_PASS:?falta RABBITMQ_PASS en despliegue/.env}
+    # La EC2 tiene 4 GB para cinco JVM -estas cuatro y el BFF- y dos nodos de
+    # RabbitMQ. Sin techo, cada JVM reserva un cuarto de la memoria del host y
+    # entre todas lo agotan. SerialGC gasta menos memoria que G1 y estos
+    # servicios no la necesitan.
+    JAVA_OPTS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC
+
+services:
+
+  rabbitmq-1:
+    <<: *rabbitmq-comun
+    hostname: rabbitmq-1
+    container_name: rabbitmq-1
+    volumes:
+      - ../rabbitmq-cluster/rabbitmq-1/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq-usuario.conf:/etc/rabbitmq/conf.d/20-usuario.conf:ro
+      - rabbitmq1_data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:15672:15672"
+
+  rabbitmq-2:
+    <<: *rabbitmq-comun
+    hostname: rabbitmq-2
+    container_name: rabbitmq-2
+    volumes:
+      - ../rabbitmq-cluster/rabbitmq-2/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq-usuario.conf:/etc/rabbitmq/conf.d/20-usuario.conf:ro
+      - rabbitmq2_data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:15673:15672"
+
+  catalog:
+    <<: *microservicio
+    image: pedidos360/catalog:ep2
+    container_name: ms-pedidos360-catalog
+    env_file: oracle.env
+    environment:
+      <<: *entorno-comun
+      SPRING_PROFILE: oracle
+      TNS_ADMIN: /app/wallet
+      ORACLE_JDBC_URL: jdbc:oracle:thin:@pedidos360_tp?TNS_ADMIN=/app/wallet
+    volumes:
+      - ../wallet:/app/wallet:ro
+    ports:
+      - "127.0.0.1:8082:8082"
+
+  orders:
+    <<: *microservicio
+    image: pedidos360/orders:ep2
+    container_name: ms-pedidos360-orders
+    env_file: oracle.env
+    environment:
+      <<: *entorno-comun
+      SPRING_PROFILE: oracle
+      TNS_ADMIN: /app/wallet
+      ORACLE_JDBC_URL: jdbc:oracle:thin:@pedidos360_tp?TNS_ADMIN=/app/wallet
+      CATALOG_BASE_URL: http://catalog:8082
+    volumes:
+      - ../wallet:/app/wallet:ro
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on:
+      rabbitmq-1: { condition: service_healthy }
+      catalog: { condition: service_started }
+
+  notify:
+    <<: *microservicio
+    image: pedidos360/notify:ep2
+    container_name: ms-pedidos360-notify
+    ports:
+      - "127.0.0.1:8083:8083"
+    depends_on:
+      rabbitmq-1: { condition: service_healthy }
+
+  rabbitadmin:
+    <<: *microservicio
+    image: pedidos360/rabbitadmin:ep2
+    container_name: ms-pedidos360-rabbitadmin
+    ports:
+      - "127.0.0.1:8084:8084"
+    depends_on:
+      rabbitmq-1: { condition: service_healthy }
+
+networks:
+  pedidos360:
+
+volumes:
+  rabbitmq1_data:
+  rabbitmq2_data:
