@@ -105,6 +105,8 @@ cd C:\dev\pedidos360-ep2\pruebas ; .\verificar-ep2.ps1
 
 ### Paso 1. Mostrar el clúster
 
+> **Login de Management.** En la EC2 el usuario es **`pedidos360`** con la contraseña que muestra la ventana del túnel, no `guest`/`guest`: ese usuario se elimina al desplegar. Si la página dice *Not_Authorized* con `guest`, es esto, y de paso confirma que el túnel llega a la EC2. En local sí es `guest`/`guest`.
+
 En Management, pestaña **Overview** → **Nodes**: los dos nodos.
 
 > «Este es el clúster RabbitMQ que usan los microservicios.»
