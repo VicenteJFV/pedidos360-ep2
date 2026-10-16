@@ -131,6 +131,25 @@ paso "Contenedores"
 INICIO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 $COMPOSE up -d --remove-orphans
 
+# Comando corto para la demostracion: los logs de pedidos (productor) y notify
+# (consumidor) en vivo. Pensado para la terminal de Session Manager en la
+# consola de AWS, que se abre desde el navegador sin llave SSH: ahi escribir el
+# docker compose completo seria lento y facil de equivocar. Se deja el prefijo
+# con el nombre del contenedor para distinguir que linea es de cada uno.
+cat > /usr/local/bin/logs-demo <<EOF
+#!/bin/bash
+# Logs en vivo de ms-pedidos360-orders y ms-pedidos360-notify. Ctrl+C para salir.
+exec sudo docker compose --project-directory $DESPLIEGUE -f $DESPLIEGUE/docker-compose.yml logs -f --tail 15 orders notify
+EOF
+chmod 755 /usr/local/bin/logs-demo
+
+# El agente de Session Manager viene en Amazon Linux 2023. Si el perfil de
+# instancia se acaba de asignar, el agente tarda en notarlo; reiniciarlo hace
+# que se registre de inmediato y la terminal quede disponible en la consola.
+if systemctl list-unit-files amazon-ssm-agent.service >/dev/null 2>&1; then
+    systemctl restart amazon-ssm-agent >/dev/null 2>&1 || true
+fi
+
 # ---------------------------------------------------------------------------
 paso "Cluster RabbitMQ"
 # ---------------------------------------------------------------------------

@@ -178,7 +178,10 @@ $rutasFuncionales = @(
     @{ Metodo = "PUT";    Ruta = "/api/orders/{id}/ship" },
     @{ Metodo = "PUT";    Ruta = "/api/orders/{id}/deliver" },
     @{ Metodo = "GET";    Ruta = "/api/catalog" },
-    @{ Metodo = "POST";   Ruta = "/api/catalog" }
+    @{ Metodo = "POST";   Ruta = "/api/catalog" },
+    # EP2: API administradora de RabbitMQ. Una sola ruta para todos sus endpoints;
+    # el BFF la reenvia a rabbitadmin y exige el rol Admin.
+    @{ Metodo = "ANY";    Ruta = "/api/rabbitmq/{proxy+}" }
 )
 
 $rutasExistentes = (Invoke-Aws @("apigatewayv2", "get-routes", "--api-id", $apiId, "--max-results", "500")).Items
@@ -195,7 +198,9 @@ function Add-Ruta {
     }
 
     # HTTP APIs sustituyen {id} en la URI de integracion con el valor del path.
-    $uriIntegracion = "$script:DestinoBff$Ruta"
+    # Un parametro voraz se declara {proxy+} en la ruta pero se usa como {proxy}
+    # en la URI de destino.
+    $uriIntegracion = "$script:DestinoBff$($Ruta.Replace('{proxy+}', '{proxy}'))"
 
     $integracion = Invoke-Aws @("apigatewayv2", "create-integration",
         "--api-id", $script:apiId,

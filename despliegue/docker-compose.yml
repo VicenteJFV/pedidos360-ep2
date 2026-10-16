@@ -153,6 +153,8 @@ services:
       # servicio. En EP1 eran 127.0.0.1 porque todo corria en el host.
       MICROSERVICIOS_ORDERS_BASEURL: http://orders:8081
       MICROSERVICIOS_CATALOG_BASEURL: http://catalog:8082
+      # La API administradora de RabbitMQ entra por el BFF, solo para Admin.
+      MICROSERVICIOS_RABBITADMIN_BASEURL: http://rabbitadmin:8084
       # Sin configuracion de CORS: se resuelve en el API Gateway.
       JAVA_OPTS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC
     ports:
@@ -162,6 +164,7 @@ services:
     depends_on:
       orders: { condition: service_started }
       catalog: { condition: service_started }
+      rabbitadmin: { condition: service_started }
 
   frontend:
     image: pedidos360/frontend:ep2

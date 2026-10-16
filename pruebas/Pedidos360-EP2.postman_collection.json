@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b2f4c6a8-11d3-4e7a-8f20-ep2pedidos360",
     "name": "Pedidos360 EP2 - RabbitMQ",
-    "description": "Pruebas obligatorias de la seccion 12 de la guia de EP2.\n\nAntes de correrla:\n\n1. Levantar el cluster:  cd rabbitmq-cluster ; .\\levantar-cluster.ps1\n2. Arrancar los cuatro microservicios (catalog 8082, orders 8081, notify 8083, rabbitadmin 8084).\n3. Seleccionar el environment \"Pedidos360 EP2 - local\".\n\nCORRER CON EL COLLECTION RUNNER, la coleccion completa y con Delay = 1000 ms.\n\nLas dos razones: las carpetas se apoyan en variables que fija la anterior, y dos comprobaciones repiten su peticion hasta que el consumidor termina (el ciclo de reintentos tarda unos 7 segundos). Esa repeticion usa setNextRequest, que solo funciona dentro del Runner.\n\nLas DLQ se purgan al principio para que los conteos del flujo con error signifiquen algo.",
+    "description": "Pruebas obligatorias de la seccion 12 de la guia de EP2.\n\nDos environments:\n\n- \"Pedidos360 EP2 - local\": servicios en 127.0.0.1, sin token.\n- \"Pedidos360 EP2 - EC2\": todo por el API Gateway con el JWT de Entra ID de un usuario Admin en la variable token (pruebasobtener-token.ps1). Sirve desde cualquier PC, sin tunel.\n\nAntes de correrla:\n\n1. Levantar el cluster:  cd rabbitmq-cluster ; .\\levantar-cluster.ps1\n2. Arrancar los cuatro microservicios (catalog 8082, orders 8081, notify 8083, rabbitadmin 8084).\n3. Seleccionar el environment \"Pedidos360 EP2 - local\".\n\nCORRER CON EL COLLECTION RUNNER, la coleccion completa y con Delay = 1000 ms.\n\nLas dos razones: las carpetas se apoyan en variables que fija la anterior, y dos comprobaciones repiten su peticion hasta que el consumidor termina (el ciclo de reintentos tarda unos 7 segundos). Esa repeticion usa setNextRequest, que solo funciona dentro del Runner.\n\nLas DLQ se purgan al principio para que los conteos del flujo con error signifiquen algo.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -30,8 +30,16 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq/purge",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq", "purge"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email.dlq",
+                "purge"
+              ]
             }
           },
           "response": []
@@ -54,8 +62,16 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.kitchen.dlq/purge",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.kitchen.dlq", "purge"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.kitchen.dlq",
+                "purge"
+              ]
             }
           },
           "response": []
@@ -78,8 +94,16 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.invoice.dlq/purge",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.invoice.dlq", "purge"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.invoice.dlq",
+                "purge"
+              ]
             }
           },
           "response": []
@@ -110,8 +134,13 @@
             "header": [],
             "url": {
               "raw": "{{urlCatalogo}}/api/catalog",
-              "host": ["{{urlCatalogo}}"],
-              "path": ["api", "catalog"]
+              "host": [
+                "{{urlCatalogo}}"
+              ],
+              "path": [
+                "api",
+                "catalog"
+              ]
             }
           },
           "response": []
@@ -158,8 +187,14 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/metricas",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "metricas"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "metricas"
+              ]
             }
           },
           "response": []
@@ -188,8 +223,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email"
+              ]
             }
           },
           "response": []
@@ -219,15 +261,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Normal\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
             },
             "url": {
               "raw": "{{urlPedidos}}/api/orders",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
             },
             "description": "Crear un pedido NO publica mensajes: todavia no hay nada que notificar."
           },
@@ -257,8 +309,15 @@
             "header": [],
             "url": {
               "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{pedidoId}}",
+                "accept"
+              ]
             }
           },
           "response": []
@@ -298,8 +357,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email"
+              ]
             }
           },
           "response": []
@@ -325,8 +391,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email.dlq"
+              ]
             }
           },
           "response": []
@@ -356,15 +429,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"clienteEmail\": \"error-permanente@pedidos360.cl\",\n  \"clienteNombre\": \"Cliente Con Correo Invalido\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
             },
             "url": {
               "raw": "{{urlPedidos}}/api/orders",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
             }
           },
           "response": []
@@ -393,8 +476,15 @@
             "header": [],
             "url": {
               "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{pedidoId}}",
+                "accept"
+              ]
             }
           },
           "response": []
@@ -426,8 +516,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email.dlq"
+              ]
             }
           },
           "response": []
@@ -456,8 +553,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.kitchen.dlq",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.kitchen.dlq"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.kitchen.dlq"
+              ]
             }
           },
           "response": []
@@ -487,8 +591,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email"
+              ]
             }
           },
           "response": []
@@ -513,15 +624,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"clienteEmail\": \"error-transitorio@pedidos360.cl\",\n  \"clienteNombre\": \"Cliente Con Proveedor Caido\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
             },
             "url": {
               "raw": "{{urlPedidos}}/api/orders",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
             }
           },
           "response": []
@@ -548,8 +669,15 @@
             "header": [],
             "url": {
               "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/accept",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders", "{{pedidoId}}", "accept"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{pedidoId}}",
+                "accept"
+              ]
             }
           },
           "response": []
@@ -595,8 +723,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.cmd.email.dlq",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.cmd.email.dlq"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.cmd.email.dlq"
+              ]
             }
           },
           "response": []
@@ -631,9 +766,20 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName={{colaPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues"],
-              "query": [{ "key": "queueName", "value": "{{colaPrueba}}" }]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues"
+              ],
+              "query": [
+                {
+                  "key": "queueName",
+                  "value": "{{colaPrueba}}"
+                }
+              ]
             }
           },
           "response": []
@@ -662,8 +808,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "{{colaPrueba}}"
+              ]
             }
           },
           "response": []
@@ -689,11 +842,23 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName={{exchangePrueba}}&type=topic",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "exchanges"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "exchanges"
+              ],
               "query": [
-                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
-                { "key": "type", "value": "topic" }
+                {
+                  "key": "exchangeName",
+                  "value": "{{exchangePrueba}}"
+                },
+                {
+                  "key": "type",
+                  "value": "topic"
+                }
               ]
             }
           },
@@ -724,12 +889,27 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName={{colaPrueba}}&exchangeName={{exchangePrueba}}&routingKey={{routingKeyPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "bindings"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "bindings"
+              ],
               "query": [
-                { "key": "queueName", "value": "{{colaPrueba}}" },
-                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
-                { "key": "routingKey", "value": "{{routingKeyPrueba}}" }
+                {
+                  "key": "queueName",
+                  "value": "{{colaPrueba}}"
+                },
+                {
+                  "key": "exchangeName",
+                  "value": "{{exchangePrueba}}"
+                },
+                {
+                  "key": "routingKey",
+                  "value": "{{routingKeyPrueba}}"
+                }
               ]
             }
           },
@@ -757,12 +937,27 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName={{colaPrueba}}&exchangeName={{exchangePrueba}}&routingKey={{routingKeyPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "bindings"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "bindings"
+              ],
               "query": [
-                { "key": "queueName", "value": "{{colaPrueba}}" },
-                { "key": "exchangeName", "value": "{{exchangePrueba}}" },
-                { "key": "routingKey", "value": "{{routingKeyPrueba}}" }
+                {
+                  "key": "queueName",
+                  "value": "{{colaPrueba}}"
+                },
+                {
+                  "key": "exchangeName",
+                  "value": "{{exchangePrueba}}"
+                },
+                {
+                  "key": "routingKey",
+                  "value": "{{routingKeyPrueba}}"
+                }
               ]
             }
           },
@@ -789,8 +984,16 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}/purge",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}", "purge"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "{{colaPrueba}}",
+                "purge"
+              ]
             }
           },
           "response": []
@@ -816,8 +1019,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "{{colaPrueba}}"
+              ]
             }
           },
           "response": []
@@ -844,8 +1054,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/{{colaPrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "{{colaPrueba}}"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "{{colaPrueba}}"
+              ]
             }
           },
           "response": []
@@ -868,8 +1085,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/exchanges/{{exchangePrueba}}",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "exchanges", "{{exchangePrueba}}"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "exchanges",
+                "{{exchangePrueba}}"
+              ]
             }
           },
           "response": []
@@ -900,8 +1124,14 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues"
+              ]
             }
           },
           "response": []
@@ -931,9 +1161,20 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues?queueName=",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues"],
-              "query": [{ "key": "queueName", "value": "" }]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues"
+              ],
+              "query": [
+                {
+                  "key": "queueName",
+                  "value": ""
+                }
+              ]
             }
           },
           "response": []
@@ -959,9 +1200,20 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName=ex.invalido.ep2",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "exchanges"],
-              "query": [{ "key": "exchangeName", "value": "ex.invalido.ep2" }]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "exchanges"
+              ],
+              "query": [
+                {
+                  "key": "exchangeName",
+                  "value": "ex.invalido.ep2"
+                }
+              ]
             }
           },
           "response": []
@@ -989,11 +1241,23 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/exchanges?exchangeName=ex.invalido.ep2&type=directo",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "exchanges"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "exchanges"
+              ],
               "query": [
-                { "key": "exchangeName", "value": "ex.invalido.ep2" },
-                { "key": "type", "value": "directo" }
+                {
+                  "key": "exchangeName",
+                  "value": "ex.invalido.ep2"
+                },
+                {
+                  "key": "type",
+                  "value": "directo"
+                }
               ]
             }
           },
@@ -1020,11 +1284,23 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName=q.invalida.ep2&routingKey=rk.ep2",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "bindings"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "bindings"
+              ],
               "query": [
-                { "key": "queueName", "value": "q.invalida.ep2" },
-                { "key": "routingKey", "value": "rk.ep2" }
+                {
+                  "key": "queueName",
+                  "value": "q.invalida.ep2"
+                },
+                {
+                  "key": "routingKey",
+                  "value": "rk.ep2"
+                }
               ]
             }
           },
@@ -1054,11 +1330,23 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/bindings?queueName=q.invalida.ep2&exchangeName=cmd.direct",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "bindings"],
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "bindings"
+              ],
               "query": [
-                { "key": "queueName", "value": "q.invalida.ep2" },
-                { "key": "exchangeName", "value": "cmd.direct" }
+                {
+                  "key": "queueName",
+                  "value": "q.invalida.ep2"
+                },
+                {
+                  "key": "exchangeName",
+                  "value": "cmd.direct"
+                }
               ]
             }
           },
@@ -1085,8 +1373,15 @@
             "header": [],
             "url": {
               "raw": "{{urlAdmin}}/api/rabbitmq/queues/q.no.existe.ep2",
-              "host": ["{{urlAdmin}}"],
-              "path": ["api", "rabbitmq", "queues", "q.no.existe.ep2"]
+              "host": [
+                "{{urlAdmin}}"
+              ],
+              "path": [
+                "api",
+                "rabbitmq",
+                "queues",
+                "q.no.existe.ep2"
+              ]
             }
           },
           "response": []
@@ -1103,7 +1398,11 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Responde 409', () => pm.response.to.have.status(409));"
+                  "pm.test('Responde 409', () => pm.response.to.have.status(409));",
+                  "",
+                  "// 999 es el tope por linea (@Max): una cantidad valida pero mayor que el",
+                  "// stock es un conflicto de negocio, 409. Por encima del tope seria una",
+                  "// entrada invalida, 400, y no probaria lo que se quiere probar."
                 ],
                 "type": "text/javascript"
               }
@@ -1111,15 +1410,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Ambicioso\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 999999 }\n  ]\n}"
+              "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Ambicioso\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 999 }\n  ]\n}"
             },
             "url": {
               "raw": "{{urlPedidos}}/api/orders",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
             }
           },
           "response": []
@@ -1140,15 +1449,25 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"clienteEmail\": \"cliente@duoc.cl\",\n  \"clienteNombre\": \"Cliente Normal\",\n  \"direccionEntrega\": \"Av. Siempre Viva 742\",\n  \"items\": [\n    { \"productoId\": {{productoId}}, \"cantidad\": 1 }\n  ]\n}"
             },
             "url": {
               "raw": "{{urlPedidos}}/api/orders",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
             }
           },
           "response": []
@@ -1174,8 +1493,15 @@
             "header": [],
             "url": {
               "raw": "{{urlPedidos}}/api/orders/{{pedidoId}}/ship",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders", "{{pedidoId}}", "ship"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{pedidoId}}",
+                "ship"
+              ]
             }
           },
           "response": []
@@ -1198,13 +1524,29 @@
             "header": [],
             "url": {
               "raw": "{{urlPedidos}}/api/orders/999999",
-              "host": ["{{urlPedidos}}"],
-              "path": ["api", "orders", "999999"]
+              "host": [
+                "{{urlPedidos}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "999999"
+              ]
             }
           },
           "response": []
         }
       ]
     }
-  ]
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  }
 }

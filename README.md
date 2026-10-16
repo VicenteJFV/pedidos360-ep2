@@ -171,12 +171,16 @@ cd C:\dev\pedidos360-ep2\aws ; .\07-desplegar-ep2.ps1
 | Frontend Angular (nginx) | `:80` | **https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/** |
 | BFF | `:8080` | por el API Gateway, rutas `/api/...` con JWT |
 | RabbitMQ Management | `:15672` y `:15673` | **http://32.194.66.142:15672**, con login |
-| `orders`, `catalog`, `notify`, `rabbitadmin` | `127.0.0.1` | solo desde la EC2 o por túnel SSH |
+| API administradora (`rabbitadmin`) | `127.0.0.1` | por el API Gateway en `/api/rabbitmq/...`, con JWT y **solo rol Admin** (lo reenvía el BFF) |
+| `orders`, `catalog`, `notify` | `127.0.0.1` | solo a través del BFF |
+| Logs y terminal de la EC2 | — | **Session Manager** desde la consola de AWS, comando `logs-demo` |
 
 | Decisión | Por qué |
 | :--- | :--- |
 | El frontend se entra por el API Gateway (`/app/`) | Entra ID no acepta direcciones de retorno `http://` fuera de `localhost`, y MSAL necesita HTTPS para PKCE. El Gateway da HTTPS con certificado válido, comparte origen con `/api/...` y sigue siendo el **único punto de entrada**, como en EP1 |
 | **CORS en el API Gateway**, no en el código | Lo pidió el profesor en la evaluación de EP1. El Gateway responde el preflight y agrega las cabeceras; se eliminaron las rutas `OPTIONS` que EP1 reenviaba al BFF. Ver [`02-desplegar-api-gateway.ps1`](aws/02-desplegar-api-gateway.ps1) |
+| `rabbitadmin` detrás del Gateway y del BFF, solo Admin | No tiene autenticación propia y puede borrar colas: no se publica directo. Entra como el resto de la API —JWT en el Gateway, rol en el BFF—, igual que en EP1 |
+| Terminal por Session Manager (`LabInstanceProfile`) | Logs desde el navegador, sin llave SSH ni puerto 22: la demo funciona desde cualquier PC |
 | Management publicado como en las guías (`"15672:15672"`) | Protegido por su login. No existe `guest/guest`: usuario y cookie del clúster se generan en la EC2 y no están en git |
 | La EC2 compila; se sube el código, no los JAR | El paquete pesa unos 170 KB en lugar de 144 MB. Las dependencias las baja la EC2 por la red de AWS |
 | Contraseña de Oracle por la entrada estándar de SSH | No aparece en la línea de comandos ni en un archivo del portátil |

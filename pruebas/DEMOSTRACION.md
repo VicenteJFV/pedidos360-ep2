@@ -15,46 +15,52 @@ El disparador es **el correo del cliente del pedido**. Nada más. Se crea el ped
 
 La guía dice que la prueba *«debe ejecutarse sobre la solución desplegada y funcionando»*. Todo corre en la EC2 —frontend, BFF, los cuatro microservicios y el clúster— con Docker Compose, y la base en Oracle Cloud.
 
-| Qué | Dónde | Cómo se entra |
-| :--- | :--- | :--- |
-| Aplicación (frontend) | https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/ | navegador, login con Entra ID |
-| RabbitMQ Management | http://32.194.66.142:15672 (nodo 2: `:15673`) | navegador, usuario `pedidos360` |
-| Logs de `orders` y `notify` | terminal de la EC2 | `08-tunel-demo.ps1 -Logs` |
-| API administradora (Postman) | `127.0.0.1:8084` de la EC2 | túnel: `08-tunel-demo.ps1` |
+**Todo se hace desde el navegador y Postman.** No hace falta la llave SSH, ni el túnel, ni instalar nada: sirve desde un PC del instituto.
 
-**1. Inicia el lab.** La EC2 arranca sola y los contenedores vuelven solos (comprobado tras un reinicio del lab). No hace falta volver a desplegar.
+| Qué | Cómo se entra |
+| :--- | :--- |
+| Aplicación | https://xpglku1pj5.execute-api.us-east-1.amazonaws.com/Desarrollo/app/ |
+| RabbitMQ Management | http://32.194.66.142:15672 (nodo 2: `:15673`), usuario `pedidos360` |
+| Logs de `orders` y `notify` | consola de AWS → Session Manager → comando `logs-demo` |
+| Postman (pruebas 1, 2 y 3) | environment **Pedidos360 EP2 - EC2**, con el token de un usuario Admin |
 
-**2. Carga las credenciales**, solo si vas a usar los scripts (logs o túnel), porque tu IP puede haber cambiado:
+**1. Inicia el lab** en AWS Academy. La EC2 arranca sola y los contenedores vuelven solos; no hace falta desplegar.
 
-```powershell
-cd C:\dev\pedidos360-ep2\aws ; .\01-credenciales-learner-lab.ps1 -DesdePortapapeles
+**2. Terminal de la EC2 con los logs** (la que pide la guía en los pasos 3 y 4):
+
+1. En la consola de AWS: **EC2 → Instancias → `pedidos360-bff` → Conectar**.
+2. Pestaña **Session Manager → Conectar**. Se abre una terminal en el navegador.
+3. Escribe:
+
+```
+logs-demo
 ```
 
-```powershell
-.\07-desplegar-ep2.ps1
+Muestra en vivo los logs de `ms-pedidos360-orders` (productor) y `ms-pedidos360-notify` (consumidor), cada línea con el nombre de su contenedor. `Ctrl+C` para salir.
+
+**3. Management** en http://32.194.66.142:15672, pestaña **Queues**. El usuario es `pedidos360`; la contraseña está en la EC2. Para verla, en la misma terminal de Session Manager:
+
+```
+sudo grep RABBITMQ_PASS /opt/pedidos360-ep2/despliegue/.env
 ```
 
-`07` autoriza tu IP actual para SSH y vuelve a desplegar sin cambiar nada; es idempotente.
+En la EC2 **no** existe `guest`/`guest`.
 
-**3. Contraseña de Management.** El usuario es `pedidos360`; la contraseña la muestra `.\08-tunel-demo.ps1` al abrirse. En la EC2 **no** existe `guest`/`guest`.
-
-**4. Ventana de logs** de `orders` (productor) y `notify` (consumidor). Es la terminal que pide la guía en los pasos 3 y 4:
+**4. Token para Postman**, con el usuario **Admin** (es el que puede aceptar pedidos y usar la API administradora):
 
 ```powershell
-cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1 -Logs
+cd pedidos360-ep2\pruebas ; .\obtener-token.ps1 -Usuario "Admin@luissantacruz2026.onmicrosoft.com"
 ```
 
-**5. Para la prueba 3 (Postman)**, deja abierto el túnel en otra ventana; la colección apunta a `127.0.0.1:8084`:
+Se abre el navegador para el login de Microsoft, y el token queda copiado al portapapeles. En Postman, elige el environment **Pedidos360 EP2 - EC2** y pega el token en la variable `token`. Dura una hora.
 
-```powershell
-cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1
-```
+**5. Purga las DLQ** en Postman, carpeta **0. Preparacion**, para que la prueba 2 muestre un mensaje nuevo y no uno viejo. Después sigue en **Prueba 1** más abajo: los pedidos se crean y se aceptan desde Postman, y la prueba 3 usa las mismas peticiones que en local.
 
-**6. La operación de las pruebas 1 y 2** puede ejecutarse **desde la aplicación**, como sugiere la guía: en el panel de administración, con el usuario Admin, el botón **Avanzar Estado** sobre un pedido `CREADO` llama a `accept`, que es la operación que publica el mensaje. El frontend no crea pedidos: créalos antes con el comando de PowerShell de la prueba 1 (por el túnel) y acéptalos desde la aplicación. Para la prueba 2, crea el pedido con el correo `error-permanente@pedidos360.cl`.
-
-Después haz el paso **5 (purgar las DLQ)** de la sección local y sigue en **Prueba 1**.
+> **La operación también puede ejecutarse desde la aplicación**, como sugiere la guía: en el panel de administración, con el usuario Admin, el botón **Avanzar Estado** sobre un pedido `CREADO` llama a `accept`, que es la operación que publica el mensaje. El frontend no crea pedidos: créalos antes en Postman.
 
 > **Antes de la presentación**, confirma en la consola de OCI que la base `pedidos360` esté **Available**. Las bases Always Free se detienen solas tras 7 días sin uso, y si está detenida, catálogo y pedidos no arrancan.
+
+**Desde tu notebook** también puedes usar los scripts: `.\07-desplegar-ep2.ps1` autoriza tu IP y vuelve a desplegar, `.\08-tunel-demo.ps1 -Logs` muestra los logs por SSH, y `.\08-tunel-demo.ps1` abre el túnel para usar el environment *local* contra la EC2.
 
 ---
 

@@ -42,7 +42,6 @@ if (-not $Llave) {
 }
 $opcionesSsh = @("-i", $Llave, "-o", "ConnectTimeout=20", "-o", "StrictHostKeyChecking=accept-new",
                  "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4")
-$compose = "sudo docker compose --project-directory /opt/pedidos360-ep2/despliegue -f /opt/pedidos360-ep2/despliegue/docker-compose.yml"
 
 # ---------------------------------------------------------------------------
 # Logs
@@ -55,7 +54,9 @@ if ($Logs) {
     Write-Host ""
     # -t asigna una terminal: sin ella, Ctrl+C no le llega al comando remoto.
     $ErrorActionPreference = "Continue"
-    & ssh @opcionesSsh -t "ec2-user@$Ip" "$compose logs -f --tail 15 --no-log-prefix orders notify"
+    # logs-demo lo instala el despliegue. Es el mismo comando que se usa en la
+    # terminal de Session Manager, asi que la salida se ve igual por los dos lados.
+    & ssh @opcionesSsh -t "ec2-user@$Ip" "logs-demo"
     exit $LASTEXITCODE
 }
 

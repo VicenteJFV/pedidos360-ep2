@@ -130,6 +130,22 @@ if ($ec2.State.Name -eq "stopped") {
 $ip = $ec2.PublicIpAddress
 Write-Host "  $Instancia  $($ec2.InstanceType)  $ip" -ForegroundColor Green
 
+# Perfil de instancia para Session Manager: abre una terminal de la EC2 desde
+# la consola de AWS, en el navegador, sin llave SSH ni puerto 22. Es lo que
+# permite mostrar los logs desde un PC del instituto. El Learner Lab no deja
+# crear roles, pero si usar el que trae: LabInstanceProfile.
+if (-not $ec2.IamInstanceProfile) {
+    $asociacion = Invoke-Aws @("ec2", "associate-iam-instance-profile", "--instance-id", $Instancia,
+                               "--iam-instance-profile", "Name=LabInstanceProfile")
+    if ($asociacion) {
+        Write-Host "  perfil LabInstanceProfile asignado (Session Manager)" -ForegroundColor Green
+    } else {
+        Write-Host "  no se pudo asignar LabInstanceProfile: Session Manager no estara disponible" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "  perfil de instancia: $(($ec2.IamInstanceProfile.Arn -split '/')[-1])" -ForegroundColor DarkGray
+}
+
 # ---------------------------------------------------------------------------
 Paso "SSH solo desde tu IP"
 # ---------------------------------------------------------------------------
