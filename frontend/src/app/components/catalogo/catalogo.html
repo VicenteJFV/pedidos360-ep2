@@ -1,0 +1,14 @@
+<div class="catalogo-container">
+  <h2>Catálogo de Productos</h2>
+  
+  <div class="grid-productos">
+    <!-- Angular repetirá este bloque por cada producto -->
+    <div class="producto-card" *ngFor="let producto of productos">
+      <div class="producto-icono">{{ producto.icono }}</div>
+      <h3>{{ producto.nombre }}</h3>
+      <p class="descripcion">{{ producto.descripcion }}</p>
+      <p class="precio">${{ producto.precio | number }}</p>
+      <button class="btn-comprar">Agregar al pedido</button>
+    </div>
+  </div>
+</div>

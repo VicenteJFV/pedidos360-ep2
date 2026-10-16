@@ -1,0 +1,26 @@
+<nav class="navbar">
+  <div class="navbar-brand">
+    <h2>Pedidos360</h2>
+  </div>
+  <ul class="navbar-links">
+    <li><a routerLink="/catalogo">Catálogo</a></li>
+    
+
+    <li *ngIf="authService.getRole() === 'Admin'">
+      <a routerLink="/admin">Panel Admin</a>
+    </li>
+    
+
+    <li *ngIf="!authService.isLoggedIn()">
+      <button (click)="login()" style="cursor: pointer; padding: 5px 10px;">Iniciar Sesión</button>
+    </li>
+    
+
+    <li *ngIf="authService.isLoggedIn()" style="display: flex; align-items: center; gap: 15px;">
+      <span style="font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 15px;">
+        Rol: {{ authService.getRole() || 'Cargando...' }}
+      </span>
+      <button (click)="logout()" style="cursor: pointer; padding: 5px 10px;">Cerrar Sesión</button>
+    </li>
+  </ul>
+</nav>

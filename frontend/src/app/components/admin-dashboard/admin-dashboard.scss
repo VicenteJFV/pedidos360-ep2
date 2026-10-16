@@ -1,0 +1,87 @@
+.admin-container {
+  padding: 40px;
+  font-family: sans-serif;
+  background-color: #f9f9f9;
+  min-height: 80vh;
+
+  h2 {
+    color: #333;
+    margin-bottom: 25px;
+  }
+}
+
+.tabla-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  overflow: hidden;
+  border: 1px solid #eaeaea;
+}
+
+.tabla-pedidos {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+
+  th, td {
+    padding: 15px 20px;
+    border-bottom: 1px solid #eaeaea;
+  }
+
+  th {
+    background-color: #0078d4;
+    color: white;
+    font-weight: 600;
+  }
+
+  tr:hover {
+    background-color: #f1f7ff;
+  }
+}
+
+.badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+
+  &.pendiente {
+    background-color: #fff3cd;
+    color: #856404;
+  }
+
+  &.proceso {
+    background-color: #cce5ff;
+    color: #004085;
+  }
+
+  &.completado {
+    background-color: #d4edda;
+    color: #155724;
+  }
+
+  &.despachado {
+    background-color: #e2e3e5;
+    color: #383d41;
+  }
+
+  &.cancelado {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+}
+
+.btn-accion {
+  background-color: #0078d4;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+
+  &:hover {
+    background-color: #005a9e;
+  }
+}

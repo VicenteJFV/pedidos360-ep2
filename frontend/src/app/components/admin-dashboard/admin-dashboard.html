@@ -1,0 +1,50 @@
+<div class="admin-container">
+  <h2>Panel de Administración - Gestión de Pedidos</h2>
+
+  <div class="tabla-card">
+    <table class="tabla-pedidos">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Cliente</th>
+          <th>Productos</th>
+          <th>Total</th>
+          <th>Estado</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let pedido of pedidos">
+          <td>{{ pedido.codigo }}</td>
+          <td>{{ pedido.clienteNombre || pedido.clienteEmail }}</td>
+          <td>
+            <span *ngFor="let it of pedido.items; let ultimo = last">
+              {{ it.nombreProducto }} ×{{ it.cantidad }}<span *ngIf="!ultimo">, </span>
+            </span>
+          </td>
+          <td>{{ pedido.total | number }}</td>
+          <td>
+            <span class="badge" [ngClass]="{
+              'pendiente':  pedido.estado === 'CREADO',
+              'proceso':    pedido.estado === 'ACEPTADO' || pedido.estado === 'EN_PREPARACION',
+              'despachado': pedido.estado === 'DESPACHADO',
+              'completado': pedido.estado === 'ENTREGADO',
+              'cancelado':  pedido.estado === 'CANCELADO'
+            }">
+              {{ pedido.estado }}
+            </span>
+          </td>
+          <td>
+            <button class="btn-accion"
+                    *ngIf="pedido.transicionesPermitidas?.length"
+                    (click)="avanzar(pedido)">
+              Avanzar Estado
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p *ngIf="pedidos.length === 0">No hay pedidos todavía.</p>
+  </div>
+</div>
