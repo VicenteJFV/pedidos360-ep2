@@ -10,8 +10,11 @@
          detenida.
       2. Deja el SSH del Security Group abierto solo a tu IP publica actual. Tu
          IP cambia entre sesiones; sin esto, SSH da timeout.
-      3. Arma un paquete con el Compose, los Dockerfile, los JAR, la
-         configuracion del cluster y el wallet, y lo sube a la EC2.
+      3. Arma un paquete con el Compose, los Dockerfile, el CODIGO FUENTE de los
+         cuatro microservicios, la configuracion del cluster y el wallet, y lo
+         sube a la EC2. No sube los JAR: la EC2 compila con Maven dentro de
+         Docker. Asi el paquete pesa menos de 1 MB en vez de 144, y las
+         dependencias las descarga la EC2 por la red de AWS.
       4. Escribe la contrasena de Oracle en la EC2 por la entrada estandar de
          SSH, nunca en la linea de comandos ni en un archivo del portatil.
       5. Ejecuta despliegue/instalar-en-ec2.sh en la instancia.
@@ -21,21 +24,17 @@
     %LOCALAPPDATA%\pedidos360\, atada a tu usuario de Windows.
 
     Es idempotente: sirve igual para el primer despliegue que para actualizar
-    despues de cambiar codigo (con -Compilar).
+    despues de cambiar codigo. Las pruebas no corren en la EC2: correlas antes
+    en el portatil (mvn test, o pruebas\verificar-ep2.ps1).
 
 .EJEMPLO
     .\01-credenciales-learner-lab.ps1 ; .\07-desplegar-ep2.ps1
-
-.EJEMPLO
-    # Recompila los cuatro microservicios antes de subirlos
-    .\07-desplegar-ep2.ps1 -Compilar
 #>
 [CmdletBinding()]
 param(
     [string]$Instancia = "i-0598cbdf24a3ab50e",
     [string]$Region = "us-east-1",
     [string]$Llave = "",
-    [switch]$Compilar,
     [string]$RaizProyecto = (Split-Path $PSScriptRoot -Parent)
 )
 
@@ -164,23 +163,6 @@ for ($i = 0; $i -lt 18; $i++) {
 if (-not $listo) { throw "SSH no responde en $ip despues de 3 minutos." }
 
 # ---------------------------------------------------------------------------
-Paso "Compilacion"
-# ---------------------------------------------------------------------------
-
-foreach ($m in $modulos) {
-    $jar = Join-Path $RaizProyecto "$m\target\$m.jar"
-    if ($Compilar -or -not (Test-Path $jar)) {
-        Write-Host "  $m..." -ForegroundColor DarkGray
-        Push-Location (Join-Path $RaizProyecto $m)
-        try {
-            Invoke-Nativo "mvn" @("-B", "-ntp", "-q", "clean", "package") | Out-Null
-            if ($script:codigo -ne 0) { throw "Fallo la compilacion de $m. Correla a mano para ver el error: mvn clean package" }
-        } finally { Pop-Location }
-    }
-    Write-Host "  $m.jar" -ForegroundColor Green
-}
-
-# ---------------------------------------------------------------------------
 Paso "Contrasena de Oracle"
 # ---------------------------------------------------------------------------
 
@@ -223,7 +205,7 @@ try {
         "rabbitmq-cluster\rabbitmq-1\rabbitmq.conf",
         "rabbitmq-cluster\rabbitmq-2\rabbitmq.conf"
     )
-    foreach ($m in $modulos) { $archivos += @("$m\Dockerfile", "$m\target\$m.jar") }
+    foreach ($m in $modulos) { $archivos += @("$m\Dockerfile", "$m\pom.xml") }
 
     foreach ($rel in $archivos) {
         $origen = Join-Path $RaizProyecto $rel
@@ -239,6 +221,15 @@ try {
         } else {
             Copy-Item $origen $destino
         }
+    }
+
+    # El codigo de produccion, sin las pruebas ni target/: es lo unico que
+    # necesita la etapa de compilacion del Dockerfile.
+    foreach ($m in $modulos) {
+        $fuente = Join-Path $RaizProyecto "$m\src\main"
+        if (-not (Test-Path $fuente)) { throw "Falta $fuente" }
+        New-Item -ItemType Directory -Force -Path (Join-Path $staging "$m\src") | Out-Null
+        Copy-Item $fuente (Join-Path $staging "$m\src\main") -Recurse
     }
 
     Copy-Item $wallet (Join-Path $staging "wallet") -Recurse

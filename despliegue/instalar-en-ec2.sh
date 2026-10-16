@@ -10,7 +10,8 @@
 # Espera encontrar en /opt/pedidos360-ep2:
 #   despliegue/docker-compose.yml, despliegue/oracle.env
 #   rabbitmq-cluster/rabbitmq-{1,2}/rabbitmq.conf
-#   ms-pedidos360-*/Dockerfile y ms-pedidos360-*/target/*.jar
+#   ms-pedidos360-*/Dockerfile, pom.xml y src/main (el codigo: la imagen
+#   compila con Maven, ver el Dockerfile)
 #   wallet/
 
 set -euo pipefail
@@ -108,9 +109,12 @@ chmod 600 "$RAIZ/wallet"/*
 # ---------------------------------------------------------------------------
 paso "Imagenes de los microservicios"
 # ---------------------------------------------------------------------------
+# Maven compila dentro de la imagen. La primera vez descarga las dependencias
+# y tarda unos minutos por servicio; despues las toma del cache de BuildKit.
 for m in catalog orders notify rabbitadmin; do
+    echo "  construyendo pedidos360/$m:ep2..."
     docker build -q -t "pedidos360/$m:ep2" "$RAIZ/ms-pedidos360-$m" >/dev/null
-    echo "  pedidos360/$m:ep2"
+    echo "  pedidos360/$m:ep2 lista"
 done
 
 # ---------------------------------------------------------------------------
