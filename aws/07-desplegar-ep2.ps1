@@ -299,10 +299,17 @@ try {
     Invoke-Nativo "scp" ($opcionesSsh + @($paquete, "ec2-user@${ip}:/tmp/pedidos360-ep2.tgz")) | Out-Null
     if ($script:codigo -ne 0) { throw "scp fallo." }
 
-    # Se reemplaza el codigo y el wallet, pero NO despliegue/.env: ahi estan la
-    # cookie del cluster y la contrasena de RabbitMQ, que deben sobrevivir.
+    # Se reemplaza el codigo, pero NO despliegue/.env: ahi estan la cookie del
+    # cluster y la contrasena de RabbitMQ, que deben sobrevivir.
+    #
+    # La carpeta wallet NO se borra: se sobrescribe. Esta montada en catalogo y
+    # pedidos, y un contenedor que no se recrea queda montando la carpeta que
+    # existia al arrancar. Si se borra y se vuelve a crear, el contenedor sigue
+    # viendo la vieja, vacia: funciona con las conexiones que ya tenia abiertas y
+    # falla con UnknownHostException: pedidos360_tp cuando el pool abre una nueva,
+    # hasta media hora despues. Paso asi en una prueba con Postman.
     $extraer = "sudo mkdir -p $destinoRemoto && " +
-               "sudo rm -rf $destinoRemoto/wallet $destinoRemoto/ms-pedidos360-* $destinoRemoto/bff $destinoRemoto/frontend && " +
+               "sudo rm -rf $destinoRemoto/ms-pedidos360-* $destinoRemoto/bff $destinoRemoto/frontend && " +
                "sudo tar -xzf /tmp/pedidos360-ep2.tgz -C $destinoRemoto && " +
                "rm -f /tmp/pedidos360-ep2.tgz"
     Invoke-Nativo "ssh" ($opcionesSsh + @("ec2-user@$ip", $extraer)) | Out-Null

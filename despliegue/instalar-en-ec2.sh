@@ -131,6 +131,17 @@ paso "Contenedores"
 INICIO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 $COMPOSE up -d --remove-orphans
 
+# Defensa ante un montaje viejo del wallet. Un contenedor que no se recrea en
+# este despliegue sigue montando la carpeta que existia cuando arranco; si
+# alguien la borro y la volvio a crear, el contenedor la ve vacia y falla al
+# abrir conexiones nuevas a Oracle. Reiniciarlo vuelve a montar la actual.
+for servicio in catalog orders; do
+    if ! docker exec "ms-pedidos360-$servicio" test -f /app/wallet/tnsnames.ora 2>/dev/null; then
+        $COMPOSE restart "$servicio" >/dev/null 2>&1
+        echo "  $servicio reiniciado: no veia el wallet actual"
+    fi
+done
+
 # Comando corto para la demostracion: los logs de pedidos (productor) y notify
 # (consumidor) en vivo. Pensado para la terminal de Session Manager en la
 # consola de AWS, que se abre desde el navegador sin llave SSH: ahi escribir el
