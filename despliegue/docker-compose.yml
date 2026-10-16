@@ -153,9 +153,7 @@ services:
       # servicio. En EP1 eran 127.0.0.1 porque todo corria en el host.
       MICROSERVICIOS_ORDERS_BASEURL: http://orders:8081
       MICROSERVICIOS_CATALOG_BASEURL: http://catalog:8082
-      # El frontend desplegado se sirve desde el dominio del API Gateway, y el
-      # BFF ve ese dominio como Origin: sin agregarlo, rechaza POST y PUT.
-      BFF_CORS_ORIGENESPERMITIDOS: http://localhost:4200,https://xpglku1pj5.execute-api.us-east-1.amazonaws.com
+      # Sin configuracion de CORS: se resuelve en el API Gateway.
       JAVA_OPTS: -Xms64m -Xmx256m -XX:MaxMetaspaceSize=160m -XX:+UseSerialGC
     ports:
       # Publico: es el destino del API Gateway, que lo alcanza desde Internet.

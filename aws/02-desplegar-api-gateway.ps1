@@ -1,17 +1,20 @@
 <#
 .SINOPSIS
     Crea la HTTP API de AWS API Gateway con JWT Authorizer de Microsoft Entra ID,
-    todas las rutas funcionales y las rutas OPTIONS publicas. Idempotente.
+    todas las rutas funcionales y la configuracion CORS. Idempotente.
 
 .DESCRIPCION
     Reemplaza los ~40 clics de la consola por un comando reproducible. Si lo vuelves
     a ejecutar, reutiliza la API existente y solo crea lo que falte.
 
-.EJEMPLO
-    .\02-desplegar-api-gateway.ps1 -DestinoBff "http://54.210.11.22:8080"
+    CORS se configura AQUI, en el API Gateway, y no en el codigo del BFF. Asi lo
+    pidio el profesor en la evaluacion de EP1. El Gateway responde el preflight
+    OPTIONS por si mismo y agrega las cabeceras Access-Control-* a las
+    respuestas; por eso ya no se crean rutas OPTIONS hacia el BFF, y las que
+    quedaran de EP1 se eliminan.
 
 .EJEMPLO
-    .\02-desplegar-api-gateway.ps1 -DestinoBff "https://abc-def.trycloudflare.com" -CorsEnGateway
+    .\02-desplegar-api-gateway.ps1 -DestinoBff "http://54.210.11.22:8080"
 #>
 [CmdletBinding()]
 param(
@@ -37,12 +40,10 @@ param(
     # un route key, devolviendo 404 en todo.
     [string]$Stage = 'Desarrollo',
 
-    # Origenes permitidos para CORS cuando se usa -CorsEnGateway.
-    [string[]]$OrigenesPermitidos = @("http://localhost:4200"),
-
-    # Deja que API Gateway responda el preflight por si mismo en vez de reenviar
-    # OPTIONS al BFF. Mas robusto, pero se aparta de lo que pide la guia.
-    [switch]$CorsEnGateway
+    # Origenes que pueden llamar a la API desde un navegador. El del propio
+    # Gateway, desde donde se sirve el frontend desplegado (/app/), se agrega
+    # solo una vez que se conoce la URL de la API.
+    [string[]]$OrigenesPermitidos = @("http://localhost:4200")
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,24 +111,29 @@ if ($api) {
     $apiId = $api.ApiId
     Write-Host "[1/5] API existente reutilizada: $apiId" -ForegroundColor Yellow
 } else {
-    $argsCrear = @("apigatewayv2", "create-api",
+    $api = Invoke-Aws @("apigatewayv2", "create-api",
         "--name", $NombreApi,
         "--protocol-type", "HTTP",
         "--description", "EP1 DSY1107 - Punto de entrada unico hacia el BFF Pedidos360")
-
-    if ($CorsEnGateway) {
-        $origenes = ($OrigenesPermitidos | ForEach-Object { '"' + $_ + '"' }) -join ","
-        $corsJson = '{"AllowOrigins":[' + $origenes + '],' +
-                    '"AllowMethods":["GET","POST","PUT","DELETE","OPTIONS"],' +
-                    '"AllowHeaders":["authorization","content-type"],' +
-                    '"AllowCredentials":false,"MaxAge":3600}'
-        $argsCrear += @("--cors-configuration", (New-ParametroJson $corsJson))
-    }
-
-    $api = Invoke-Aws $argsCrear
     $apiId = $api.ApiId
     Write-Host "[1/5] API creada: $apiId" -ForegroundColor Green
 }
+
+# CORS en el Gateway. Se aplica siempre, tambien sobre una API existente: asi
+# una API creada en EP1 sin CORS queda corregida al volver a correr el script.
+# El origen del propio Gateway entra en la lista porque desde ahi se sirve el
+# frontend desplegado; el navegador manda Origin en los POST y PUT aunque sean
+# del mismo origen.
+$origenGateway = ([Uri]$api.ApiEndpoint).GetLeftPart([UriPartial]::Authority)
+$todosLosOrigenes = @($OrigenesPermitidos + $origenGateway) | Select-Object -Unique
+$origenes = ($todosLosOrigenes | ForEach-Object { '"' + $_ + '"' }) -join ","
+$corsJson = '{"AllowOrigins":[' + $origenes + '],' +
+            '"AllowMethods":["GET","POST","PUT","DELETE","OPTIONS"],' +
+            '"AllowHeaders":["authorization","content-type"],' +
+            '"AllowCredentials":false,"MaxAge":3600}'
+Invoke-Aws @("apigatewayv2", "update-api", "--api-id", $apiId,
+             "--cors-configuration", (New-ParametroJson $corsJson)) | Out-Null
+Write-Host "      CORS en el Gateway para: $($todosLosOrigenes -join ', ')" -ForegroundColor Green
 
 # ---------------------------------------------------------------------------
 # 2. JWT Authorizer
@@ -175,17 +181,6 @@ $rutasFuncionales = @(
     @{ Metodo = "POST";   Ruta = "/api/catalog" }
 )
 
-# Preflight. Sin JWT: el navegador no manda Authorization en el OPTIONS, asi que
-# protegerlas romperia CORS con un 401 antes de la peticion real.
-$rutasPreflight = @(
-    @{ Metodo = "OPTIONS"; Ruta = "/api/orders" },
-    @{ Metodo = "OPTIONS"; Ruta = "/api/orders/{id}/accept" },
-    @{ Metodo = "OPTIONS"; Ruta = "/api/orders/{id}/prepare" },
-    @{ Metodo = "OPTIONS"; Ruta = "/api/orders/{id}/ship" },
-    @{ Metodo = "OPTIONS"; Ruta = "/api/orders/{id}/deliver" },
-    @{ Metodo = "OPTIONS"; Ruta = "/api/catalog" }
-)
-
 $rutasExistentes = (Invoke-Aws @("apigatewayv2", "get-routes", "--api-id", $apiId, "--max-results", "500")).Items
 $clavesExistentes = @{}
 foreach ($r in $rutasExistentes) { $clavesExistentes[$r.RouteKey] = $r.RouteId }
@@ -228,11 +223,23 @@ function Add-Ruta {
 Write-Host "[3/5] Rutas funcionales (protegidas con JWT):"
 foreach ($r in $rutasFuncionales) { Add-Ruta -Metodo $r.Metodo -Ruta $r.Ruta -Protegida $true }
 
-if ($CorsEnGateway) {
-    Write-Host "[4/5] Preflight resuelto por API Gateway (--cors-configuration). No se crean rutas OPTIONS." -ForegroundColor Yellow
+# El preflight lo responde el Gateway por su configuracion CORS. Las rutas
+# OPTIONS que EP1 reenviaba al BFF ya no se crean, y si quedaron de antes se
+# eliminan junto con su integracion: dejarlas seria mantener un segundo lugar
+# donde se decide CORS.
+$rutasOptions = @($rutasExistentes | Where-Object { $_.RouteKey -like "OPTIONS *" })
+if ($rutasOptions.Count -eq 0) {
+    Write-Host "[4/5] Preflight resuelto por el Gateway. No hay rutas OPTIONS." -ForegroundColor Green
 } else {
-    Write-Host "[4/5] Rutas OPTIONS (publicas, preflight hacia el BFF):"
-    foreach ($r in $rutasPreflight) { Add-Ruta -Metodo $r.Metodo -Ruta $r.Ruta -Protegida $false }
+    Write-Host "[4/5] Eliminando rutas OPTIONS de EP1 (el preflight ahora es del Gateway):"
+    foreach ($r in $rutasOptions) {
+        Invoke-Aws @("apigatewayv2", "delete-route", "--api-id", $apiId, "--route-id", $r.RouteId) | Out-Null
+        if ($r.Target -match "^integrations/(.+)$") {
+            Invoke-Aws @("apigatewayv2", "delete-integration", "--api-id", $apiId,
+                         "--integration-id", $Matches[1]) -PermitirFallo | Out-Null
+        }
+        Write-Host ("      - {0}" -f $r.RouteKey) -ForegroundColor DarkGray
+    }
 }
 
 # ---------------------------------------------------------------------------
