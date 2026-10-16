@@ -49,10 +49,10 @@ En la EC2 **no** existe `guest`/`guest`.
 **4. Token para Postman**, con el usuario **Admin** (es el que puede aceptar pedidos y usar la API administradora):
 
 ```powershell
-cd pedidos360-ep2\pruebas ; .\obtener-token.ps1 -Usuario "Admin@luissantacruz2026.onmicrosoft.com"
+cd pedidos360-ep2\pruebas ; .\obtener-token.ps1 -Cuenta "Admin@luissantacruz2026.onmicrosoft.com"
 ```
 
-Se abre el navegador para el login de Microsoft, y el token queda copiado al portapapeles. En Postman, elige el environment **Pedidos360 EP2 - EC2** y pega el token en la variable `token`. Dura una hora.
+Se abre el navegador con el login de Microsoft: la contraseña se escribe ahí, no en PowerShell. El token queda copiado al portapapeles. Usa `-Cuenta` y no `-Usuario`: ese otro modo pide la contraseña en la consola y Entra ID lo rechaza con `AADSTS7000218`. En Postman, elige el environment **Pedidos360 EP2 - EC2** y pega el token en la variable `token`. Dura una hora.
 
 **5. Purga las DLQ** en Postman, carpeta **0. Preparacion**, para que la prueba 2 muestre un mensaje nuevo y no uno viejo. Después sigue en **Prueba 1** más abajo: los pedidos se crean y se aceptan desde Postman, y la prueba 3 usa las mismas peticiones que en local.
 

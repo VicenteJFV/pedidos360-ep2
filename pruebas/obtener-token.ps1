@@ -25,7 +25,9 @@
     aparte tipo public client para pruebas.
 
 .EJEMPLO
-    .\obtener-token.ps1 -Usuario "Cliente@luissantacruz2026.onmicrosoft.com"
+    # Modo recomendado: login en el navegador (Authorization Code + PKCE).
+    # No requiere "Allow public client flows".
+    .\obtener-token.ps1 -Cuenta "Cliente@luissantacruz2026.onmicrosoft.com"
 
 .EJEMPLO
     .\obtener-token.ps1 -CodigoDispositivo
