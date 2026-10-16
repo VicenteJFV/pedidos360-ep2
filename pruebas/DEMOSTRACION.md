@@ -11,7 +11,49 @@ El disparador es **el correo del cliente del pedido**. Nada más. Se crea el ped
 
 ---
 
-## Antes de empezar
+## Antes de empezar — sobre la EC2 (lo que pide la guía)
+
+La guía dice que la prueba *«debe ejecutarse sobre la solución desplegada y funcionando»*. En la EC2 todo lo de EP2 escucha solo en `127.0.0.1`, así que se usa por un túnel SSH que lo trae a los **mismos puertos** de tu portátil: el resto de este guion, Postman y los comandos funcionan igual que en local.
+
+**1. Inicia el lab** y carga las credenciales:
+
+```powershell
+cd C:\dev\pedidos360-ep2\aws ; .\01-credenciales-learner-lab.ps1 -DesdePortapapeles
+```
+
+**2. Comprueba el despliegue.** Al iniciar el lab la EC2 arranca sola y los contenedores vuelven solos. Si cambiaste código, o si tu IP cambió y SSH no entra, vuelve a desplegar; es idempotente:
+
+```powershell
+.\07-desplegar-ep2.ps1
+```
+
+**3. Detén lo local** que ocupe los puertos, si estaba corriendo:
+
+```powershell
+cd C:\dev\pedidos360-ep2\rabbitmq-cluster ; docker compose stop
+```
+
+**4. Ventana 1, el túnel.** Muestra el usuario y la contraseña de Management. En la EC2 **no** es `guest`/`guest`:
+
+```powershell
+cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1
+```
+
+**5. Ventana 2, los logs** de `orders` (productor) y `notify` (consumidor). Esta es la terminal que pide la guía en los pasos 3 y 4:
+
+```powershell
+cd C:\dev\pedidos360-ep2\aws ; .\08-tunel-demo.ps1 -Logs
+```
+
+**6. Management** en http://localhost:15672 con las credenciales del paso 4, en la pestaña **Queues**.
+
+Después haz los pasos **4 (Postman)** y **5 (purgar las DLQ)** de la sección local, que funcionan igual por el túnel, y sigue en **Prueba 1** más abajo. Los pasos 1 a 3 de la sección local no aplican: el clúster y los servicios ya están en la EC2.
+
+> **Antes de la presentación**, confirma en la consola de OCI que la base `pedidos360` esté **Available**. Las bases Always Free se detienen solas tras 7 días sin uso, y si está detenida, catálogo y pedidos no arrancan.
+
+---
+
+## Antes de empezar — en local (para ensayar)
 
 **1. Clúster de dos nodos:**
 

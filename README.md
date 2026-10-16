@@ -158,6 +158,26 @@ El catálogo primero, porque pedidos lo consulta al crear un pedido. `notify` co
 
 **5. Postman**: importar [`pruebas/Pedidos360-EP2.postman_collection.json`](pruebas/Pedidos360-EP2.postman_collection.json) y su environment, y correr con **Collection Runner, la colección completa y `Delay = 1000 ms`**. Dos comprobaciones repiten su petición hasta que el consumidor termina, y eso usa `setNextRequest`, que solo funciona dentro del Runner.
 
+## Despliegue de EP2 en la EC2
+
+La guía exige que la prueba empírica se haga sobre la solución desplegada. En la EC2 corre un solo Compose, [`despliegue/docker-compose.yml`](despliegue/docker-compose.yml), con el clúster de dos nodos y los cuatro microservicios, contra Oracle Autonomous Database.
+
+```powershell
+cd C:\dev\pedidos360-ep2\aws ; .\07-desplegar-ep2.ps1
+```
+
+| Decisión | Por qué |
+| :--- | :--- |
+| Todo lo de EP2 publicado en `127.0.0.1` | El Security Group sigue abriendo solo el 8080 del BFF y el 22. Management y la API administradora no quedan expuestos a Internet |
+| Acceso por túnel SSH (`08-tunel-demo.ps1`) | Trae los servicios a los mismos puertos del portátil: Postman y el guion de la demo no cambian |
+| El BFF de EP1 sigue en systemd | Pedidos y catálogo se publican en `127.0.0.1:8081` y `:8082`, donde el BFF ya los buscaba; para él nada cambió |
+| Sin `guest/guest` en el broker | Usuario y cookie del clúster se generan en la EC2 la primera vez y no están en git |
+| Contraseña de Oracle por la entrada estándar de SSH | No aparece en la línea de comandos, que cualquier proceso del host puede ver, ni en un archivo del portátil |
+| Instalación desacoplada con `nohup` | En algunas redes una conexión SSH sin tráfico se corta en silencio; la instalación no puede depender de que la sesión sobreviva |
+| Catálogo y pedidos se detienen ante `ORA-01017` | Con `restart: unless-stopped`, una contraseña equivocada produce cientos de logins fallidos en minutos y bloquea ADMIN. Con la protección: un intento por servicio |
+
+Cómo se probó: se desplegó con un usuario de Oracle **inexistente** a propósito, para no arriesgar la cuenta ADMIN. Resultado: clúster con los dos nodos en *Running Nodes*, solo el usuario `pedidos360` en el broker, las tres colas con su consumidor, `notify` y `rabbitadmin` respondiendo, y `ORA-01017` desde el contenedor, lo que prueba que el wallet y el mTLS funcionan desde la EC2.
+
 ## API del microservicio administrador
 
 `RabbitMQController` valida y traduce a HTTP; `RabbitResourceManager` encapsula `RabbitAdmin` y es el único que habla con el broker.
