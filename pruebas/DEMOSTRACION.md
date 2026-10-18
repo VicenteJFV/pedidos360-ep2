@@ -24,7 +24,7 @@ La guía dice que la prueba *«debe ejecutarse sobre la solución desplegada y f
 | Logs de `orders` y `notify` | consola de AWS → Session Manager → comando `logs-demo` |
 | Postman (pruebas 1, 2 y 3) | environment **Pedidos360 EP2 - EC2**, con el token de un usuario Admin |
 
-**1. Inicia el lab** en AWS Academy. La EC2 arranca sola y los contenedores vuelven solos; no hace falta desplegar.
+**1. Inicia el lab** en AWS Academy. La EC2 arranca sola y los contenedores vuelven solos; no hace falta desplegar. **Espera unos 3 minutos antes de abrir la aplicación**: pedidos y catálogo tardan en conectarse a Oracle, y si el panel de administración pide los pedidos antes, los muestra vacíos. Si pasa, basta con recargar la página.
 
 **2. Terminal de la EC2 con los logs** (la que pide la guía en los pasos 3 y 4):
 
