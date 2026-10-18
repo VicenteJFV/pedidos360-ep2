@@ -4,7 +4,11 @@
   </div>
   <ul class="navbar-links">
     <li><a routerLink="/catalogo">Catálogo</a></li>
-    
+
+    <li *ngIf="authService.isLoggedIn()">
+      <a routerLink="/carrito">Mi pedido<span *ngIf="carrito.cantidadTotal() > 0"> ({{ carrito.cantidadTotal() }})</span></a>
+    </li>
+
 
     <li *ngIf="authService.getRole() === 'Admin'">
       <a routerLink="/admin">Panel Admin</a>

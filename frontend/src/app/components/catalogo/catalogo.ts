@@ -5,6 +5,7 @@ import { MsalBroadcastService } from '@azure/msal-angular';
 import { InteractionStatus } from '@azure/msal-browser';
 import { filter, take } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
+import { CarritoService } from '../../services/carrito.service';
 
 @Component({
   selector: 'app-catalogo',
@@ -17,9 +18,20 @@ export class Catalogo implements OnInit {
   private http = inject(HttpClient);
   private broadcast = inject(MsalBroadcastService);
   private cdr = inject(ChangeDetectorRef);
+  carrito = inject(CarritoService);
 
   productos: any[] = [];
   error: string | null = null;
+
+  /** Se puede agregar mientras el producto este activo y quede stock sin reservar en el carrito. */
+  puedeAgregar(producto: any): boolean {
+    return producto.activo !== false
+      && this.carrito.cantidadDe(producto.id) < this.carrito.maximoPara(producto.stock);
+  }
+
+  agregar(producto: any): void {
+    this.carrito.agregar(producto);
+  }
 
   ngOnInit() {
     // Esperar a que MSAL termine de procesar el redirect y fije la cuenta activa.

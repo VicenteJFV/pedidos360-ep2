@@ -56,7 +56,13 @@ Se abre el navegador con el login de Microsoft: la contraseña se escribe ahí, 
 
 **5. Purga las DLQ** en Postman, carpeta **0. Preparacion**, para que la prueba 2 muestre un mensaje nuevo y no uno viejo. Después sigue en **Prueba 1** más abajo: los pedidos se crean y se aceptan desde Postman, y la prueba 3 usa las mismas peticiones que en local.
 
-> **La operación también puede ejecutarse desde la aplicación**, como sugiere la guía: en el panel de administración, con el usuario Admin, el botón **Avanzar Estado** sobre un pedido `CREADO` llama a `accept`, que es la operación que publica el mensaje. El frontend no crea pedidos: créalos antes en Postman.
+> **Las pruebas 1 y 2 pueden hacerse enteras desde la aplicación**, como sugiere la guía, entrando como **Admin**:
+>
+> 1. **Catálogo → Agregar al pedido** en uno o más productos.
+> 2. **Mi pedido**: en *Correo del cliente* deja un correo cualquiera para la prueba 1, o escribe `error-permanente@pedidos360.cl` para la prueba 2. **Confirmar pedido.** La pantalla muestra el código del pedido creado, en estado `CREADO`.
+> 3. **Panel Admin → Avanzar Estado** sobre ese pedido. Esa es la operación que publica el mensaje (`accept`): en la terminal de `logs-demo` aparece el ACK, o el NACK y la DLQ si usaste el correo de error.
+>
+> Un Cliente también puede comprar, pero el campo de correo no le aparece: el pedido queda siempre a su nombre, y el BFF lo garantiza aunque el navegador mande otro. La prueba 3 (RabbitAdmin) sigue siendo en Postman.
 
 > **Antes de la presentación**, confirma en la consola de OCI que la base `pedidos360` esté **Available**. Las bases Always Free se detienen solas tras 7 días sin uso, y si está detenida, catálogo y pedidos no arrancan.
 

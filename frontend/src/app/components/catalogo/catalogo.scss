@@ -88,8 +88,19 @@
     font-weight: bold;
     width: 100%;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background-color: #005a9e;
     }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .en-pedido {
+    font-size: 13px;
+    color: #107c10;
+    margin: 0 0 10px;
   }
 }

@@ -1,0 +1,178 @@
+// Mismos colores y tipografia que el catalogo y la barra de navegacion.
+.carrito-container {
+  padding: 40px;
+  font-family: sans-serif;
+  max-width: 820px;
+  margin: 0 auto;
+
+  h2 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 30px;
+  }
+
+  a {
+    color: #0078d4;
+  }
+}
+
+.vacio {
+  text-align: center;
+  color: #666;
+}
+
+.lineas {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+
+  th, td {
+    padding: 12px;
+    border-bottom: 1px solid #eaeaea;
+    text-align: left;
+  }
+
+  th {
+    font-size: 13px;
+    color: #666;
+  }
+
+  .nombre {
+    color: #0078d4;
+    font-weight: bold;
+  }
+
+  .sku {
+    font-size: 12px;
+    color: #999;
+  }
+
+  .cantidad {
+    white-space: nowrap;
+
+    span {
+      display: inline-block;
+      min-width: 28px;
+      text-align: center;
+    }
+
+    button {
+      width: 28px;
+      height: 28px;
+      border: 1px solid #0078d4;
+      background: white;
+      color: #0078d4;
+      border-radius: 4px;
+      cursor: pointer;
+
+      &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  tfoot td {
+    border-bottom: none;
+    font-size: 18px;
+  }
+}
+
+.btn-quitar {
+  background: none;
+  border: none;
+  color: #a80000;
+  cursor: pointer;
+}
+
+.datos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 30px;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    color: #333;
+  }
+
+  input {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  small {
+    color: #666;
+  }
+
+  .cuenta {
+    margin: 0;
+    color: #333;
+  }
+}
+
+.error {
+  color: #a80000;
+  background: #fde7e9;
+  border: 1px solid #a80000;
+  border-radius: 4px;
+  padding: 12px;
+
+  p, ul {
+    margin: 0;
+  }
+
+  ul {
+    margin-top: 6px;
+    padding-left: 20px;
+  }
+}
+
+.btn-confirmar, .btn-secundario {
+  background-color: #0078d4;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+
+  &:hover:not(:disabled) {
+    background-color: #005a9e;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.confirmacion {
+  text-align: center;
+  background: white;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+
+  h3 {
+    margin-top: 0;
+    color: #107c10;
+  }
+
+  .codigo {
+    font-family: monospace;
+    font-size: 20px;
+    color: #333;
+  }
+
+  .nota {
+    color: #666;
+  }
+}

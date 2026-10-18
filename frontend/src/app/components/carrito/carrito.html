@@ -1,0 +1,97 @@
+<div class="carrito-container">
+  <h2>Mi pedido</h2>
+
+  <!-- Pedido recien creado -->
+  <div class="confirmacion" *ngIf="pedidoCreado() as pedido">
+    <h3>Pedido creado</h3>
+    <p class="codigo">{{ pedido.codigo }}</p>
+    <p>Estado: <strong>{{ pedido.estado }}</strong> &middot; Total: <strong>${{ pedido.total | number }}</strong></p>
+    <p class="nota" *ngIf="esAdmin()">
+      Para aceptarlo, entra al <a routerLink="/admin">Panel Admin</a> y usa <em>Avanzar Estado</em>.
+    </p>
+    <p class="nota" *ngIf="!esAdmin()">
+      Te avisaremos por correo cuando sea aceptado.
+    </p>
+    <button class="btn-secundario" (click)="nuevoPedido()">Hacer otro pedido</button>
+  </div>
+
+  <ng-container *ngIf="!pedidoCreado()">
+
+    <p class="vacio" *ngIf="carrito.items().length === 0">
+      Todavia no agregaste productos. Ve al <a routerLink="/catalogo">catalogo</a>.
+    </p>
+
+    <ng-container *ngIf="carrito.items().length > 0">
+      <table class="lineas">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Precio</th>
+            <th>Cantidad</th>
+            <th>Subtotal</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let linea of carrito.items()">
+            <td>
+              <div class="nombre">{{ linea.nombre }}</div>
+              <div class="sku">{{ linea.sku }}</div>
+            </td>
+            <td>${{ linea.precio | number }}</td>
+            <td class="cantidad">
+              <button (click)="carrito.cambiarCantidad(linea.productoId, linea.cantidad - 1)"
+                      [disabled]="linea.cantidad <= 1">&minus;</button>
+              <span>{{ linea.cantidad }}</span>
+              <button (click)="carrito.cambiarCantidad(linea.productoId, linea.cantidad + 1)"
+                      [disabled]="linea.cantidad >= carrito.maximoPara(linea.stock)">+</button>
+            </td>
+            <td>${{ linea.precio * linea.cantidad | number }}</td>
+            <td><button class="btn-quitar" (click)="carrito.quitar(linea.productoId)">Quitar</button></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3">Total</td>
+            <td colspan="2"><strong>${{ carrito.total() | number }}</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <form class="datos" (ngSubmit)="confirmar()">
+        <label *ngIf="esAdmin()">
+          Correo del cliente
+          <input type="email" name="clienteEmail" [(ngModel)]="clienteEmail" required>
+          <small>Como Admin puedes registrar el pedido a nombre de un cliente.</small>
+        </label>
+        <p class="cuenta" *ngIf="!esAdmin()">
+          El pedido queda a nombre de <strong>{{ correoDeLaCuenta() }}</strong>.
+        </p>
+
+        <label>
+          Nombre
+          <input type="text" name="clienteNombre" [(ngModel)]="clienteNombre" maxlength="150">
+        </label>
+        <label>
+          Direccion de entrega
+          <input type="text" name="direccionEntrega" [(ngModel)]="direccionEntrega" maxlength="300">
+        </label>
+        <label>
+          Observacion
+          <input type="text" name="observacion" [(ngModel)]="observacion" maxlength="500">
+        </label>
+
+        <div class="error" *ngIf="error() as e">
+          <p>{{ e.mensaje }}</p>
+          <ul *ngIf="e.detalles.length > 0">
+            <li *ngFor="let detalle of e.detalles">{{ detalle }}</li>
+          </ul>
+        </div>
+
+        <button type="submit" class="btn-confirmar" [disabled]="enviando()">
+          {{ enviando() ? 'Enviando...' : 'Confirmar pedido' }}
+        </button>
+      </form>
+    </ng-container>
+  </ng-container>
+</div>

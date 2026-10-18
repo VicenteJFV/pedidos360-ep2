@@ -11,7 +11,12 @@
       <p class="descripcion">{{ producto.descripcion }}</p>
       <p class="precio">${{ producto.precio | number }}</p>
       <p class="stock">Stock: <strong>{{ producto.stock }}</strong></p>
-      <button class="btn-comprar">Agregar al pedido</button>
+      <p class="en-pedido" *ngIf="carrito.cantidadDe(producto.id) > 0">
+        En tu pedido: <strong>{{ carrito.cantidadDe(producto.id) }}</strong>
+      </p>
+      <button class="btn-comprar" (click)="agregar(producto)" [disabled]="!puedeAgregar(producto)">
+        {{ producto.stock === 0 ? 'Sin stock' : 'Agregar al pedido' }}
+      </button>
     </div>
   </div>
 </div>
