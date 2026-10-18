@@ -326,6 +326,11 @@ Al conservarse la IP elástica, **el API Gateway nunca hay que reconfigurarlo** 
 | Un mensaje en cada una de las tres DLQ | **OK** |
 | TTL de 10 min dead-letterizando por sí solo al expirar | **OK — observado** |
 | JSON de la colección Postman de EP2 (38 peticiones) | **válido** |
+| **Colección Postman contra la EC2**, por el API Gateway con token real de Admin | **67/67 pasando** |
+| `verificar-ep2.ps1 -Oracle` en local contra Oracle Cloud, con persistencia | **75/75 pasando** |
+| Pruebas del BFF (reenvío a `rabbitadmin`, roles, 400 con cuerpo) | **8/8 pasando** |
+| Terminal de la EC2 por Session Manager desde el navegador (`logs-demo`) | **OK** |
+| Contenedores vuelven solos tras el reinicio de la EC2 que hace el lab | **OK — observado** |
 
 Las 9 pruebas de integración declaran y eliminan recursos reales en el broker, y **se saltan solas si el clúster no está levantado**: una prueba que falla porque falta la infraestructura no informa nada útil y vuelve inutilizable el build de cualquiera que no tenga Docker corriendo.
 
