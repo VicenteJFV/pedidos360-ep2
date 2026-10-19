@@ -306,4 +306,10 @@ DELETE http://127.0.0.1:8084/api/rabbitmq/queues/q.test.pedidos360
 
 **«¿Por qué las DLQ no tienen `x-dead-letter-exchange`?»** Porque un mensaje que ya falló no debe poder reencolarse otra vez: se formaría un ciclo. Sí tienen TTL, más largo que el de la cola principal (24 h contra 10 min), porque un mensaje muerto tiene que sobrevivir lo suficiente para que alguien lo revise.
 
-**«¿Qué pasa si se cae un nodo del clúster?»** Los microservicios se conectan con `spring.rabbitmq.addresses` apuntando a los dos endpoints, así que Spring reconecta al otro nodo sin intervención.
+**«¿Qué pasa si se cae un nodo del clúster?»** Depende de cuál, y conviene decirlo con precisión:
+
+- **Lo que comparten los dos nodos:** los metadatos —exchanges, bindings, usuarios, la definición de las colas—. Por eso Management muestra la misma topología en los dos, y por eso un microservicio puede conectarse a cualquiera de ellos: `spring.rabbitmq.addresses` lista los dos endpoints y Spring reconecta al otro si se pierde la conexión.
+- **Lo que NO comparten:** el contenido de las colas. Las colas son **clásicas**, y en RabbitMQ 4.x una cola clásica vive en un solo nodo, sin réplica (el espejado de colas clásicas se eliminó en esta versión). Las seis colas del caso están en `rabbitmq-1`. Si se cae `rabbitmq-2`, todo sigue funcionando; si se cae `rabbitmq-1`, las colas quedan no disponibles hasta que vuelva, aunque el clúster siga respondiendo.
+- **Qué haría falta para tolerar la caída de cualquier nodo:** colas de tipo **quorum**, que replican su contenido, y **tres** nodos, porque necesitan mayoría: con dos, perder uno ya deja sin mayoría. Es una evolución posible, no algo implementado.
+
+Esto es exactamente lo que pide la guía de preparación: *identificar qué configuraciones están implementadas y cuáles no*.
