@@ -197,9 +197,13 @@ Write-Host ""
 Write-Host "=== Escenario 4: rol sin permiso -> 403 ===" -ForegroundColor Cyan
 
 # Se crea un pedido con el Admin para tener un id real sobre el que probar.
+# Se usa el primer producto con stock: las demos y las pruebas anteriores van
+# agotando los primeros SKU, y un 409 por stock no dice nada de la seguridad.
+$producto = @($rc.Json | Where-Object { [int]$_.stock -ge 1 }) | Select-Object -First 1
+if (-not $producto) { $producto = $rc.Json[0] }
 $nuevo = Invoke-Api POST "/api/orders" -Token $TokenAdmin -Cuerpo @{
     clienteEmail = $ad.preferred_username
-    items        = @(@{ productoId = $rc.Json[0].id; cantidad = 1 })
+    items        = @(@{ productoId = $producto.id; cantidad = 1 })
 }
 if ($nuevo.Status -ne 201) {
     Comprobar "Se pudo crear un pedido de prueba" $false "status=$($nuevo.Status) $($nuevo.Texto)"
