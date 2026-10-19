@@ -77,9 +77,16 @@ public class RabbitMQConfig {
     public static final String RK_INVOICE_GEN = "invoice.gen";
 
     /**
-     * Bindings topic. El comodin * sustituye exactamente una palabra y el #
-     * sustituye cero o mas. Por eso email.* alcanza a email.send.high pero no
-     * a email.send.high.urgent, mientras que kitchen.# alcanza a ambas.
+     * Bindings topic. Las routing keys son palabras separadas por puntos; el
+     * comodin * reemplaza EXACTAMENTE UNA palabra y el # reemplaza cero o mas.
+     *
+     *   email.*    calza con email.send         (una palabra despues de email)
+     *              NO calza con email.send.high (son dos)
+     *   kitchen.#  calza con kitchen.ticket, kitchen.ticket.new y hasta kitchen
+     *
+     * Por eso el flujo que demuestra el topic publica kitchen.ticket.new: es una
+     * clave real del negocio que solo llega a q.cmd.kitchen por el patron, no
+     * por coincidencia exacta.
      */
     public static final String RK_EMAIL_TOPIC = "email.*";
     public static final String RK_KITCHEN_TOPIC = "kitchen.#";
