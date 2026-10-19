@@ -49,7 +49,7 @@ En la EC2 **no** existe `guest`/`guest`.
 **4. Token para Postman**, con el usuario **Admin** (es el que puede aceptar pedidos y usar la API administradora):
 
 ```powershell
-cd pedidos360-ep2\pruebas ; .\obtener-token.ps1 -Cuenta "Admin@luissantacruz2026.onmicrosoft.com"
+cd C:\dev\pedidos360-ep2\pruebas ; .\obtener-token.ps1 -Cuenta "Admin@luissantacruz2026.onmicrosoft.com"
 ```
 
 Se abre el navegador con el login de Microsoft: la contraseña se escribe ahí, no en PowerShell. El token queda copiado al portapapeles. Usa `-Cuenta` y no `-Usuario`: ese otro modo pide la contraseña en la consola y Entra ID lo rechaza con `AADSTS7000218`. En Postman, elige el environment **Pedidos360 EP2 - EC2** y pega el token en la variable `token`. Dura una hora.
@@ -66,7 +66,7 @@ Se abre el navegador con el login de Microsoft: la contraseña se escribe ahí, 
 
 > **Antes de la presentación**, confirma en la consola de OCI que la base `pedidos360` esté **Available**. Las bases Always Free se detienen solas tras 7 días sin uso, y si está detenida, catálogo y pedidos no arrancan.
 
-**Desde tu notebook** también puedes usar los scripts: `.\07-desplegar-ep2.ps1` autoriza tu IP y vuelve a desplegar, `.\08-tunel-demo.ps1 -Logs` muestra los logs por SSH, y `.\08-tunel-demo.ps1` abre el túnel para usar el environment *local* contra la EC2.
+**Desde tu notebook** también puedes usar los scripts de `C:\dev\pedidos360-ep2\aws`: `.\07-desplegar-ep2.ps1` autoriza tu IP y vuelve a desplegar, `.\08-tunel-demo.ps1 -Logs` muestra los logs por SSH, y `.\08-tunel-demo.ps1` abre el túnel para usar el environment *local* contra la EC2.
 
 ---
 
